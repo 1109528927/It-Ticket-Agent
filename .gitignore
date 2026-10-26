@@ -1,0 +1,37 @@
+# secrets
+.env
+.env.*
+!.env.example
+pwd.txt
+**/pwd.txt
+
+# python
+.venv/
+venv/
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# frontend
+node_modules/
+dist/
+.vite/
+*.local
+
+# ide / os
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# notes (不上传)
+实验agent.md
+登录注册可复用完整笔记.md
+*.log
+sql-out.txt
+
+# local data / dumps
+*.sqlite3
+*.db

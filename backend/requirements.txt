@@ -1,0 +1,20 @@
+fastapi>=0.115.0
+uvicorn>=0.34.0
+sqlalchemy[asyncio]>=2.0.0
+greenlet>=3.0.0
+asyncpg>=0.29.0
+psycopg[binary]>=3.1.0
+# 可选：仍要连 MySQL 时再装
+pymysql>=1.1.0
+aiomysql>=0.2.0
+pydantic-settings==2.7.1
+bcrypt>=4.0.0
+python-dotenv>=1.0.0
+python-multipart>=0.0.9
+openai>=1.0.0
+langchain>=0.3.0
+langchain-openai>=0.3.0
+langgraph>=0.2.0
+requests>=2.32.0
+urllib3>=2.0.0
+pymilvus>=2.4.0
