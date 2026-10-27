@@ -1,8 +1,14 @@
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { deleteKbArticle, listKbArticles } from '@/api/kb'
+import {
+  deleteKbArticle,
+  getKbIngestJob,
+  ingestKbFile,
+  listKbArticles,
+  listKbIngestJobs
+} from '@/api/kb'
 import { getErrorMessage } from '@/utils/request'
 import SupportAside from '@/components/SupportAside.vue'
 
@@ -10,9 +16,18 @@ const router = useRouter()
 const loading = ref(false)
 const deletingId = ref(null)
 const rows = ref([])
+const jobs = ref([])
+const uploading = ref(false)
+const pollTimer = ref(null)
 const filters = reactive({
   category: '',
   q: ''
+})
+const ingest = reactive({
+  category: 'account',
+  title: '',
+  enableOcr: false,
+  file: null
 })
 
 const categoryLabel = {
@@ -20,6 +35,13 @@ const categoryLabel = {
   device: '设备',
   network: '网络',
   permission: '权限'
+}
+
+const statusLabel = {
+  pending: '排队中',
+  running: '处理中',
+  succeeded: '成功',
+  failed: '失败'
 }
 
 const load = async () => {
@@ -39,6 +61,72 @@ const load = async () => {
     ElMessage.error(getErrorMessage(e, '加载失败'))
   } finally {
     loading.value = false
+  }
+}
+
+const loadJobs = async () => {
+  try {
+    const res = await listKbIngestJobs({ limit: 8 })
+    const body = res.data
+    if (body.code !== 200) return
+    jobs.value = body.data?.items || []
+    const busy = jobs.value.some((j) => j.status === 'pending' || j.status === 'running')
+    if (busy && !pollTimer.value) {
+      pollTimer.value = setInterval(async () => {
+        await loadJobs()
+        const still = jobs.value.some((j) => j.status === 'pending' || j.status === 'running')
+        if (!still) {
+          clearInterval(pollTimer.value)
+          pollTimer.value = null
+          await load()
+        }
+      }, 2000)
+    }
+  } catch {
+    /* 任务表未建时不挡列表 */
+  }
+}
+
+const onFileChange = (uploadFile) => {
+  ingest.file = uploadFile?.raw || null
+}
+
+const onUpload = async () => {
+  if (!ingest.file) {
+    ElMessage.warning('请选择 PDF / DOCX / MD / 图片')
+    return
+  }
+  const fd = new FormData()
+  fd.append('category', ingest.category)
+  fd.append('file', ingest.file)
+  if (ingest.title.trim()) fd.append('title', ingest.title.trim())
+  fd.append('enable_ocr', ingest.enableOcr ? 'true' : 'false')
+
+  uploading.value = true
+  try {
+    const res = await ingestKbFile(fd)
+    const body = res.data
+    if (body.code !== 200) {
+      ElMessage.error(body.message || '提交失败')
+      return
+    }
+    ElMessage.success(body.message || '已受理')
+    ingest.file = null
+    ingest.title = ''
+    await loadJobs()
+    const jobId = body.data?.job_id
+    if (jobId) {
+      // 再拉一次详情，便于立刻看到 pending
+      try {
+        await getKbIngestJob(jobId)
+      } catch {
+        /* ignore */
+      }
+    }
+  } catch (e) {
+    ElMessage.error(getErrorMessage(e, '提交失败'))
+  } finally {
+    uploading.value = false
   }
 }
 
@@ -69,7 +157,14 @@ const onDelete = async (row) => {
   }
 }
 
-onMounted(load)
+onMounted(async () => {
+  await load()
+  await loadJobs()
+})
+
+onUnmounted(() => {
+  if (pollTimer.value) clearInterval(pollTimer.value)
+})
 </script>
 
 <template>
@@ -80,6 +175,52 @@ onMounted(load)
         <h2>知识库</h2>
         <el-button type="primary" @click="router.push('/support/kb/edit')">新建文章</el-button>
       </div>
+
+      <el-card class="ingest" shadow="never">
+        <template #header>
+          <span>文件入库（PDF / DOCX / MD / 图片）</span>
+        </template>
+        <div class="ingest-row">
+          <el-select v-model="ingest.category" style="width: 140px">
+            <el-option
+              v-for="(label, value) in categoryLabel"
+              :key="value"
+              :label="label"
+              :value="value"
+            />
+          </el-select>
+          <el-input
+            v-model="ingest.title"
+            clearable
+            placeholder="标题（可空，默认用文件名）"
+            style="width: 220px"
+          />
+          <el-upload
+            :auto-upload="false"
+            :show-file-list="true"
+            :limit="1"
+            accept=".md,.markdown,.txt,.pdf,.docx,.png,.jpg,.jpeg,.webp"
+            @change="onFileChange"
+            @remove="() => (ingest.file = null)"
+          >
+            <el-button>选择文件</el-button>
+          </el-upload>
+          <el-checkbox v-model="ingest.enableOcr">图片 OCR / 图意</el-checkbox>
+          <el-button type="primary" :loading="uploading" @click="onUpload">提交入库</el-button>
+        </div>
+        <p class="hint">提交后接口先回「已受理」，后台解析切分再写向量；图片请勾选 OCR。</p>
+        <el-table v-if="jobs.length" :data="jobs" size="small" class="job-table">
+          <el-table-column prop="id" label="任务" width="70" />
+          <el-table-column prop="filename" label="文件" min-width="140" />
+          <el-table-column label="状态" width="90">
+            <template #default="{ row }">{{ statusLabel[row.status] || row.status }}</template>
+          </el-table-column>
+          <el-table-column prop="chunk_count" label="块数" width="70" />
+          <el-table-column prop="article_id" label="文章" width="80" />
+          <el-table-column prop="error_message" label="失败原因" min-width="160" show-overflow-tooltip />
+        </el-table>
+      </el-card>
+
       <div class="filters">
         <el-select v-model="filters.category" clearable placeholder="类别" style="width: 140px" @change="load">
           <el-option v-for="(label, value) in categoryLabel" :key="value" :label="label" :value="value" />
@@ -138,6 +279,23 @@ onMounted(load)
   align-items: center;
   justify-content: space-between;
   margin-bottom: 8px;
+}
+.ingest {
+  margin-bottom: 20px;
+}
+.ingest-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+.hint {
+  margin: 8px 0 0;
+  color: #888;
+  font-size: 13px;
+}
+.job-table {
+  margin-top: 12px;
 }
 .filters {
   display: flex;

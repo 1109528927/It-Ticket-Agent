@@ -1,4 +1,4 @@
-"""知识库检索工具（客服侧）：调 milvus_kb.search_kb，结果截断成短文本给模型。"""
+"""知识库检索工具（客服侧）：调 milvus_kb.search_kb（混合检索+重排），结果截断成短文本给模型。"""
 
 from typing import Any
 
@@ -10,6 +10,8 @@ from utils import milvus_kb
 @tool
 def search_kb(q: str, category: str | None = None) -> str:
     """检索内部 IT 知识库（处理步骤、制度、手册）。问标准做法时先调用，不要瞎编 SOP。
+
+    底层：向量 + BM25 召回，RRF 融合，再重排后取 Top3。
 
     Args:
         q: 用户问题或检索关键词。

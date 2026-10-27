@@ -18,15 +18,15 @@
 | | `kb_source/`（本目录） | `src/agent/skills/` |
 |--|------------------------|---------------------|
 | 内容 | 可多篇、可较长的处理手册 | 短 SOP，按类别懒加载 |
-| 用途 | 向量检索，给 `search_kb` | 注入「本单 Skill」提示 |
+| 用途 | 混合检索（向量+BM25→RRF→重排），给 `search_kb` | 注入「本单 Skill」提示 |
 | 更新 | 增删改 md 后重新入库 | 改 md 即可，随图加载 |
 
 ## 入库建议
 
-1. 遍历本目录下各类别 `.md`
-2. 按标题/段落递归切分（可带 overlap）
-3. 调用 embedding 写入 Milvus，元数据带上 `category`
-4. 可选：正文同步进 MySQL/PostgreSQL 的知识文章表，供后台编辑
+1. 遍历本目录下各类别 `.md`，或在知识库页上传 PDF / DOCX / MD / 图片（`POST /api/kb/ingest`，先「已受理」）
+2. 按标题/段落递归切分（可带 overlap）；图片勾选 OCR 时走百炼视觉抽文字
+3. 调用 embedding 写入 Milvus，元数据带上 `category`；块 id 为 `article_id * 10000 + i`
+4. 正文同步进业务库 `kb_article`，任务状态见 `kb_ingest_job`
 
 ## 维护
 

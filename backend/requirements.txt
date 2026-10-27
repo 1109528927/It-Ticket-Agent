@@ -18,3 +18,10 @@ langgraph>=0.2.0
 requests>=2.32.0
 urllib3>=2.0.0
 pymilvus>=2.4.0
+rank_bm25>=0.2.2
+jieba>=0.42.1
+pypdf>=5.0.0
+python-docx>=1.1.0
+langchain-text-splitters>=0.3.0
+# 可选：配了 REDIS_URL 才用，入库队列
+redis>=5.0.0
