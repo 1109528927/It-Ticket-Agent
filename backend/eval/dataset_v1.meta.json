@@ -1,0 +1,15 @@
+{
+  "version": "dataset_v1",
+  "schema": [
+    "query_id",
+    "query",
+    "gt_doc_ids",
+    "source",
+    "difficulty",
+    "category"
+  ],
+  "path": "dataset_v1.jsonl",
+  "count": 90,
+  "from": "queries_v1_gt.jsonl",
+  "note": "标准评测集：gt_doc_ids 为文档级金标准；用 load_eval_dataset 读取。"
+}

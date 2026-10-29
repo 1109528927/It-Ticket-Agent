@@ -300,4 +300,17 @@ def save_turn(state: TicketAgentState) -> dict:
         save_chat_message(
             user_id=user_id, role="assistant", content=last_ai, kind="full", ticket_id=tid
         )
+
+    # 每轮可观测记账：工具名、检索条数、是否 HITL、粗算 token
+    try:
+        from agent.observability import persist_turn_metrics
+
+        persist_turn_metrics(
+            user_id=user_id,
+            role=str(state.get("role") or ""),
+            ticket_id=tid,
+            messages=messages,
+        )
+    except Exception:
+        pass
     return {}

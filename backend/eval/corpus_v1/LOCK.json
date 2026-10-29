@@ -1,0 +1,12 @@
+{
+  "version": "corpus_v1",
+  "locked_at": "2026-10-28",
+  "doc_count": 39,
+  "note": "评测锁定语料：扩库时尽量复用旧 doc_id；不切块、不向量化。",
+  "by_category": {
+    "account": 10,
+    "device": 9,
+    "network": 9,
+    "permission": 11
+  }
+}

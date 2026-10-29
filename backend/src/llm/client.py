@@ -1,8 +1,13 @@
 """绑定通义千问。还没有 Schema、还没有对话路由。"""
 
+import os
+
 from langchain.chat_models import init_chat_model
 
 from config.request import DASHSCOPE_API_KEY, DASHSCOPE_BASE_URL, LLM_MODEL
+
+# 超时秒数；超时后上层给友好提示，避免一直转圈
+_LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT_SEC", "60"))
 
 # streaming=True：SSE 打字机需要；不影响 invoke
 model = init_chat_model(
@@ -11,6 +16,7 @@ model = init_chat_model(
     api_key=DASHSCOPE_API_KEY or "missing",
     base_url=DASHSCOPE_BASE_URL,
     streaming=True,
+    timeout=_LLM_TIMEOUT,
 )
 
 

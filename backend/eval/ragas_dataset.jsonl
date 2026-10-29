@@ -1,0 +1,20 @@
+{"question": "忘记域密码怎么办", "answer": "", "contexts": [], "ground_truth": "先核实报障人姓名工号是否本人；无安全风险时，在系统提出重置密码并写明目标工号；须客服确认后才生效；生效后用临时密码登录并立即改密；未确认前不能声称已重置成功。", "id": "acc-pwd-01", "category": "account"}
+{"question": "域账号密码忘了，能直接帮我改好吗", "answer": "", "contexts": [], "ground_truth": "不能在对话里直接改好。应提出重置密码申请，等客服在处理页确认后才真正改密；确认后通知员工用临时密码登录并立刻修改，勿把密码发到公共群。", "id": "acc-pwd-02", "category": "account"}
+{"question": "邮箱登不上去怎么排查", "answer": "", "contexts": [], "ground_truth": "先确认账号是否被锁定、是否刚改过密码未同步；必要时提出重置密码，确认后再告知员工；不要未核实就重置。", "id": "acc-mail-01", "category": "account"}
+{"question": "账号被锁了怎么处理", "answer": "", "contexts": [], "ground_truth": "核对是否本人及锁定原因；按流程解锁或提出相关申请；涉及安全事件先升级，不盲目解锁。", "id": "acc-lock-01", "category": "account"}
+{"question": "多因素认证一直过不去", "answer": "", "contexts": [], "ground_truth": "核对设备时间、令牌绑定与网络；引导按手册排查；仍失败按流程重置 MFA 或升级，不编造绕过步骤。", "id": "acc-mfa-01", "category": "account"}
+{"question": "打印机连不上怎么排查", "answer": "", "contexts": [], "ground_truth": "检查电源与指示灯、网络能否通、默认打印机是否选对、驱动是否匹配；重启打印后台服务；换机试打区分本机与设备问题；多机均失败则转报修并写清已做检查。", "id": "dev-print-01", "category": "device"}
+{"question": "选得到打印机但打不出来", "answer": "", "contexts": [], "ground_truth": "核对是否脱机、默认机是否正确、驱动与 Print Spooler；仍不行换电脑试打以判断本机还是设备/网络问题。", "id": "dev-print-02", "category": "device"}
+{"question": "电脑蓝屏频繁重启怎么办", "answer": "", "contexts": [], "ground_truth": "记录蓝屏代码与时间，排查最近安装的软件驱动，可建议安全模式排查；怀疑硬件则开设备单，不要只让重装系统了事。", "id": "dev-bsod-01", "category": "device"}
+{"question": "显示器没信号怎么处理", "answer": "", "contexts": [], "ground_truth": "检查电源线、信号线、输入源与亮度；换线换口试；排除显卡/主机问题后再决定是否报修。", "id": "dev-mon-01", "category": "device"}
+{"question": "VPN一直连不上", "answer": "", "contexts": [], "ground_truth": "核对账号是否在职过期、客户端是否为公司指定版、网络是否拦截、系统时间是否准确；可重装客户端；仍失败则提出重置 VPN 凭据并走人工确认，不在聊天发送完整密钥。", "id": "net-vpn-01", "category": "network"}
+{"question": "家里连公司VPN失败怎么弄", "answer": "", "contexts": [], "ground_truth": "先换热点排除家庭网络拦截；确认客户端版本与系统时间；仍失败走重置凭据或人工确认，勿在对话里下发完整配置密钥。", "id": "net-vpn-02", "category": "network"}
+{"question": "办公网上不了怎么排查", "answer": "", "contexts": [], "ground_truth": "确认网线或 WiFi 信号，换网口或重连，检查 IP 与网关；大面积故障升级网络组，不要只重启一次电脑就结案。", "id": "net-lan-01", "category": "network"}
+{"question": "网页打不开怀疑DNS怎么办", "answer": "", "contexts": [], "ground_truth": "按 DNS 异常手册核对解析与配置，区分本机与大面积故障；需要时升级网络组，不编造随意改 DNS 的野路子当标准。", "id": "net-dns-01", "category": "network"}
+{"question": "怎么申请系统权限", "answer": "", "contexts": [], "ground_truth": "确认岗位与所需权限组及主管同意；提出变更权限并写清工号与权限组；客服确认后再生效；验证失败先查是否加错组，不要连续盲目提出。权限变更属高风险，助手不能直接开通。", "id": "perm-apply-01", "category": "permission"}
+{"question": "帮我直接开通管理员权限", "answer": "", "contexts": [], "ground_truth": "不能直接开通。须按申请流程核实岗位与审批；管理员级权限无制度依据应拒绝；只能提出变更，确认后才生效。", "id": "perm-apply-02", "category": "permission"}
+{"question": "权限开错了怎么收回", "answer": "", "contexts": [], "ground_truth": "核实应保留与应撤销的权限；提出变更权限；确认后收回多余权限并通知申请人。", "id": "perm-revoke-01", "category": "permission"}
+{"question": "共享文件夹没权限怎么处理", "answer": "", "contexts": [], "ground_truth": "按共享文件夹权限手册核对路径与权限组；走提出与确认流程变更，不私下给Everyone完全控制。", "id": "perm-share-01", "category": "permission"}
+{"question": "新员工入职要开哪些账号", "answer": "", "contexts": [], "ground_truth": "按入职开通清单逐项开通域、邮箱等必要账号，核对工号与岗位；高风险项走确认，不遗漏清单项也不超开权限。", "id": "acc-onboard-01", "category": "account"}
+{"question": "耳机麦克风没声音怎么查", "answer": "", "contexts": [], "ground_truth": "按设备手册检查插口、系统默认设备、驱动与权限；排除后再决定是否换设备报修。", "id": "dev-audio-01", "category": "device"}
+{"question": "内网访问特别慢怎么排查", "answer": "", "contexts": [], "ground_truth": "按内网慢专项区分本机、链路与服务侧；记录现象与范围，该升级网络组时升级，不只会让清缓存。", "id": "net-slow-01", "category": "network"}

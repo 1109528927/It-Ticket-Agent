@@ -1,0 +1,90 @@
+{"query_id": "q001", "query": "忘记域密码怎么办", "gt_doc_ids": ["doc_account_002"], "source": "doc_reverse", "difficulty": "easy", "category": "account"}
+{"query_id": "q002", "query": "域账号密码忘了，能直接帮我改好吗", "gt_doc_ids": ["doc_account_002", "doc_permission_005"], "source": "business_sim", "difficulty": "hard", "category": "account"}
+{"query_id": "q003", "query": "开机登录一直提示密码错误", "gt_doc_ids": ["doc_account_002", "doc_account_005"], "source": "online_sim", "difficulty": "fuzzy", "category": "account"}
+{"query_id": "q004", "query": "Outlook也登不进是不是域密码的问题", "gt_doc_ids": ["doc_account_002", "doc_account_006"], "source": "business_sim", "difficulty": "hard", "category": "account"}
+{"query_id": "q005", "query": "邮箱登不上去怎么排查", "gt_doc_ids": ["doc_account_006", "doc_account_002", "doc_account_005"], "source": "doc_reverse", "difficulty": "easy", "category": "account"}
+{"query_id": "q006", "query": "邮箱打不开了急", "gt_doc_ids": ["doc_account_006", "doc_account_002", "doc_account_005"], "source": "online_sim", "difficulty": "fuzzy", "category": "account"}
+{"query_id": "q007", "query": "刚改过密码邮箱还是进不去", "gt_doc_ids": ["doc_account_006"], "source": "business_sim", "difficulty": "hard", "category": "account"}
+{"query_id": "q008", "query": "账号被锁了怎么处理", "gt_doc_ids": ["doc_account_005", "doc_account_002"], "source": "doc_reverse", "difficulty": "easy", "category": "account"}
+{"query_id": "q009", "query": "登了好几次被锁了求解锁", "gt_doc_ids": ["doc_account_005", "doc_account_002"], "source": "online_sim", "difficulty": "fuzzy", "category": "account"}
+{"query_id": "q010", "query": "多因素认证一直过不去", "gt_doc_ids": ["doc_account_001"], "source": "doc_reverse", "difficulty": "easy", "category": "account"}
+{"query_id": "q011", "query": "手机令牌刷不出来过不了二次验证", "gt_doc_ids": ["doc_account_001"], "source": "business_sim", "difficulty": "hard", "category": "account"}
+{"query_id": "q012", "query": "MFA挂了", "gt_doc_ids": ["doc_account_001"], "source": "online_sim", "difficulty": "fuzzy", "category": "account"}
+{"query_id": "q013", "query": "新员工入职要开哪些账号", "gt_doc_ids": ["doc_account_003", "doc_permission_006"], "source": "doc_reverse", "difficulty": "easy", "category": "account"}
+{"query_id": "q014", "query": "下周有人入职，账号邮箱要提前开好吗", "gt_doc_ids": ["doc_account_003"], "source": "business_sim", "difficulty": "hard", "category": "account"}
+{"query_id": "q015", "query": "同事离职了账号要怎么关", "gt_doc_ids": ["doc_account_004"], "source": "business_sim", "difficulty": "easy", "category": "account"}
+{"query_id": "q016", "query": "离职禁用漏了会怎样按流程走", "gt_doc_ids": ["doc_account_004"], "source": "doc_reverse", "difficulty": "hard", "category": "account"}
+{"query_id": "q017", "query": "打印机连不上怎么排查", "gt_doc_ids": ["doc_device_002"], "source": "doc_reverse", "difficulty": "easy", "category": "device"}
+{"query_id": "q018", "query": "选得到打印机但打不出来", "gt_doc_ids": ["doc_device_002"], "source": "doc_reverse", "difficulty": "easy", "category": "device"}
+{"query_id": "q019", "query": "打印机显示脱机", "gt_doc_ids": ["doc_device_002"], "source": "online_sim", "difficulty": "fuzzy", "category": "device"}
+{"query_id": "q020", "query": "我这台打不出别人可以打是什么情况", "gt_doc_ids": ["doc_device_002"], "source": "business_sim", "difficulty": "hard", "category": "device"}
+{"query_id": "q021", "query": "电脑蓝屏频繁重启怎么办", "gt_doc_ids": ["doc_device_004"], "source": "doc_reverse", "difficulty": "easy", "category": "device"}
+{"query_id": "q022", "query": "蓝屏了代码我拍照了下一步呢", "gt_doc_ids": ["doc_device_004"], "source": "business_sim", "difficulty": "hard", "category": "device"}
+{"query_id": "q023", "query": "电脑老重启", "gt_doc_ids": ["doc_device_004"], "source": "online_sim", "difficulty": "fuzzy", "category": "device"}
+{"query_id": "q024", "query": "显示器没信号怎么处理", "gt_doc_ids": ["doc_device_003"], "source": "doc_reverse", "difficulty": "easy", "category": "device"}
+{"query_id": "q025", "query": "屏幕黑的但主机灯是亮的", "gt_doc_ids": ["doc_device_003"], "source": "online_sim", "difficulty": "fuzzy", "category": "device"}
+{"query_id": "q026", "query": "耳机麦克风没声音怎么查", "gt_doc_ids": ["doc_device_005"], "source": "doc_reverse", "difficulty": "easy", "category": "device"}
+{"query_id": "q027", "query": "开会别人听不见我说话", "gt_doc_ids": ["doc_device_005"], "source": "business_sim", "difficulty": "fuzzy", "category": "device"}
+{"query_id": "q028", "query": "新电脑怎么申请领用", "gt_doc_ids": ["doc_device_001"], "source": "doc_reverse", "difficulty": "easy", "category": "device"}
+{"query_id": "q029", "query": "入职笔记本还没拿到找谁", "gt_doc_ids": ["doc_device_001"], "source": "online_sim", "difficulty": "fuzzy", "category": "device"}
+{"query_id": "q030", "query": "VPN一直连不上", "gt_doc_ids": ["doc_network_002"], "source": "doc_reverse", "difficulty": "easy", "category": "network"}
+{"query_id": "q031", "query": "家里连公司VPN失败怎么弄", "gt_doc_ids": ["doc_network_002"], "source": "business_sim", "difficulty": "hard", "category": "network"}
+{"query_id": "q032", "query": "酒店网连VPN一直转圈", "gt_doc_ids": ["doc_network_002"], "source": "online_sim", "difficulty": "fuzzy", "category": "network"}
+{"query_id": "q033", "query": "是不是客户端版本太旧导致VPN挂", "gt_doc_ids": ["doc_network_002"], "source": "business_sim", "difficulty": "hard", "category": "network"}
+{"query_id": "q034", "query": "办公网上不了怎么排查", "gt_doc_ids": ["doc_network_005"], "source": "doc_reverse", "difficulty": "easy", "category": "network"}
+{"query_id": "q035", "query": "工位突然没网了", "gt_doc_ids": ["doc_network_005"], "source": "online_sim", "difficulty": "fuzzy", "category": "network"}
+{"query_id": "q036", "query": "插着网线但上不了内网", "gt_doc_ids": ["doc_network_005"], "source": "business_sim", "difficulty": "hard", "category": "network"}
+{"query_id": "q037", "query": "网页打不开怀疑DNS怎么办", "gt_doc_ids": ["doc_network_001"], "source": "doc_reverse", "difficulty": "easy", "category": "network"}
+{"query_id": "q038", "query": "只有部分网站打不开是DNS吗", "gt_doc_ids": ["doc_network_001"], "source": "business_sim", "difficulty": "hard", "category": "network"}
+{"query_id": "q039", "query": "内网访问特别慢怎么排查", "gt_doc_ids": ["doc_network_004"], "source": "doc_reverse", "difficulty": "easy", "category": "network"}
+{"query_id": "q040", "query": "打开共享盘卡死一样", "gt_doc_ids": ["doc_network_004"], "source": "online_sim", "difficulty": "fuzzy", "category": "network"}
+{"query_id": "q041", "query": "会议室投屏连不上无线", "gt_doc_ids": ["doc_network_003"], "source": "doc_reverse", "difficulty": "easy", "category": "network"}
+{"query_id": "q042", "query": "开会投屏一直连不上急", "gt_doc_ids": ["doc_network_003"], "source": "online_sim", "difficulty": "fuzzy", "category": "network"}
+{"query_id": "q043", "query": "怎么申请系统权限", "gt_doc_ids": ["doc_permission_006", "doc_permission_002"], "source": "doc_reverse", "difficulty": "easy", "category": "permission"}
+{"query_id": "q044", "query": "帮我直接开通管理员权限", "gt_doc_ids": ["doc_permission_006", "doc_permission_005"], "source": "business_sim", "difficulty": "hard", "category": "permission"}
+{"query_id": "q045", "query": "要开个业务系统权限主管已经口头同意了", "gt_doc_ids": ["doc_permission_006"], "source": "business_sim", "difficulty": "hard", "category": "permission"}
+{"query_id": "q046", "query": "权限开错了怎么收回", "gt_doc_ids": ["doc_permission_007"], "source": "doc_reverse", "difficulty": "easy", "category": "permission"}
+{"query_id": "q047", "query": "不小心给多了权限赶紧收回", "gt_doc_ids": ["doc_permission_007"], "source": "online_sim", "difficulty": "fuzzy", "category": "permission"}
+{"query_id": "q048", "query": "共享文件夹没权限怎么处理", "gt_doc_ids": ["doc_permission_004"], "source": "doc_reverse", "difficulty": "easy", "category": "permission"}
+{"query_id": "q049", "query": "共享盘进不去提示拒绝访问", "gt_doc_ids": ["doc_permission_004", "doc_permission_005"], "source": "online_sim", "difficulty": "fuzzy", "category": "permission"}
+{"query_id": "q050", "query": "临时权限到期了还能自动续吗", "gt_doc_ids": ["doc_permission_003"], "source": "business_sim", "difficulty": "hard", "category": "permission"}
+{"query_id": "q051", "query": "项目支援要临时开权限怎么走", "gt_doc_ids": ["doc_permission_003", "doc_permission_006"], "source": "doc_reverse", "difficulty": "easy", "category": "permission"}
+{"query_id": "q052", "query": "业务系统角色要变更怎么办", "gt_doc_ids": ["doc_permission_001", "doc_permission_007"], "source": "doc_reverse", "difficulty": "easy", "category": "permission"}
+{"query_id": "q053", "query": "我该加哪个角色看对照表吗", "gt_doc_ids": ["doc_permission_002", "doc_permission_006"], "source": "business_sim", "difficulty": "hard", "category": "permission"}
+{"query_id": "q054", "query": "助手能直接改密码吗边界是什么", "gt_doc_ids": ["doc_permission_005", "doc_account_002"], "source": "doc_reverse", "difficulty": "hard", "category": "permission"}
+{"query_id": "q055", "query": "密码和权限类操作哪些必须人审", "gt_doc_ids": ["doc_permission_005", "doc_account_002", "doc_permission_006"], "source": "business_sim", "difficulty": "hard", "category": "permission"}
+{"query_id": "q056", "query": "电脑和打印机都不对劲先看啥", "gt_doc_ids": ["doc_device_002", "doc_device_004"], "source": "online_sim", "difficulty": "fuzzy", "category": "device"}
+{"query_id": "q057", "query": "又是网又是VPN都不稳定从哪查起", "gt_doc_ids": ["doc_network_002", "doc_network_005"], "source": "business_sim", "difficulty": "hard", "category": "network"}
+{"query_id": "q058", "query": "入职账号和电脑一起办有清单吗", "gt_doc_ids": ["doc_account_003", "doc_device_001"], "source": "business_sim", "difficulty": "hard", "category": "account"}
+{"query_id": "q059", "query": "门户SSO登录一直跳回来怎么办", "gt_doc_ids": ["doc_account_008"], "source": "doc_reverse", "difficulty": "easy", "category": "account"}
+{"query_id": "q060", "query": "钉钉点进去业务系统票据无效", "gt_doc_ids": ["doc_account_008"], "source": "online_sim", "difficulty": "fuzzy", "category": "account"}
+{"query_id": "q061", "query": "密码快到期了怎么改才符合策略", "gt_doc_ids": ["doc_account_009"], "source": "doc_reverse", "difficulty": "easy", "category": "account"}
+{"query_id": "q062", "query": "密码过期了进不去只能找你们改吗", "gt_doc_ids": ["doc_account_009", "doc_account_002"], "source": "business_sim", "difficulty": "hard", "category": "account"}
+{"query_id": "q063", "query": "部门公共邮箱怎么申请", "gt_doc_ids": ["doc_account_007"], "source": "doc_reverse", "difficulty": "easy", "category": "account"}
+{"query_id": "q064", "query": "项目组要开个共享邮箱写权限给谁", "gt_doc_ids": ["doc_account_007"], "source": "business_sim", "difficulty": "hard", "category": "account"}
+{"query_id": "q065", "query": "提示非常用地点登录被拦了", "gt_doc_ids": ["doc_account_010"], "source": "doc_reverse", "difficulty": "easy", "category": "account"}
+{"query_id": "q066", "query": "我人在出差账号风控了怎么解", "gt_doc_ids": ["doc_account_010", "doc_account_005"], "source": "business_sim", "difficulty": "hard", "category": "account"}
+{"query_id": "q067", "query": "软件中心没有的软件怎么装", "gt_doc_ids": ["doc_device_006"], "source": "doc_reverse", "difficulty": "easy", "category": "device"}
+{"query_id": "q068", "query": "帮我开管理员我自己下个安装包", "gt_doc_ids": ["doc_device_006", "doc_permission_011"], "source": "business_sim", "difficulty": "hard", "category": "device"}
+{"query_id": "q069", "query": "笔记本插电不充电怎么查", "gt_doc_ids": ["doc_device_008"], "source": "doc_reverse", "difficulty": "easy", "category": "device"}
+{"query_id": "q070", "query": "电池鼓包了还能继续用吗", "gt_doc_ids": ["doc_device_008"], "source": "online_sim", "difficulty": "fuzzy", "category": "device"}
+{"query_id": "q071", "query": "私人U盘拷资料被禁用了怎么办", "gt_doc_ids": ["doc_device_007"], "source": "doc_reverse", "difficulty": "easy", "category": "device"}
+{"query_id": "q072", "query": "临时要往U盘写文件能开权限吗", "gt_doc_ids": ["doc_device_007"], "source": "business_sim", "difficulty": "hard", "category": "device"}
+{"query_id": "q073", "query": "离职电脑怎么归还", "gt_doc_ids": ["doc_device_009"], "source": "doc_reverse", "difficulty": "easy", "category": "device"}
+{"query_id": "q074", "query": "资产盘点对不上找谁", "gt_doc_ids": ["doc_device_009"], "source": "online_sim", "difficulty": "fuzzy", "category": "device"}
+{"query_id": "q075", "query": "办公WiFi连不上怎么排查", "gt_doc_ids": ["doc_network_008"], "source": "doc_reverse", "difficulty": "easy", "category": "network"}
+{"query_id": "q076", "query": "访客网为什么上不了内网共享盘", "gt_doc_ids": ["doc_network_008", "doc_network_003"], "source": "business_sim", "difficulty": "hard", "category": "network"}
+{"query_id": "q077", "query": "浏览器说连接不是私密连接怎么办", "gt_doc_ids": ["doc_network_006"], "source": "doc_reverse", "difficulty": "easy", "category": "network"}
+{"query_id": "q078", "query": "是不是系统时间不对导致证书报错", "gt_doc_ids": ["doc_network_006"], "source": "business_sim", "difficulty": "hard", "category": "network"}
+{"query_id": "q079", "query": "公司代理PAC怎么配", "gt_doc_ids": ["doc_network_007"], "source": "doc_reverse", "difficulty": "easy", "category": "network"}
+{"query_id": "q080", "query": "只有一个浏览器能上网是不是代理问题", "gt_doc_ids": ["doc_network_007"], "source": "business_sim", "difficulty": "hard", "category": "network"}
+{"query_id": "q081", "query": "防火墙要开通端口怎么申请", "gt_doc_ids": ["doc_network_009"], "source": "doc_reverse", "difficulty": "easy", "category": "network"}
+{"query_id": "q082", "query": "联调临时放行Any源可以吗", "gt_doc_ids": ["doc_network_009"], "source": "business_sim", "difficulty": "hard", "category": "network"}
+{"query_id": "q083", "query": "Git仓库权限怎么申请", "gt_doc_ids": ["doc_permission_008"], "source": "doc_reverse", "difficulty": "easy", "category": "permission"}
+{"query_id": "q084", "query": "要生产库写权限直接给Maintainer吧", "gt_doc_ids": ["doc_permission_008"], "source": "business_sim", "difficulty": "hard", "category": "permission"}
+{"query_id": "q085", "query": "申请数据库只读账号要写哪些信息", "gt_doc_ids": ["doc_permission_010"], "source": "doc_reverse", "difficulty": "easy", "category": "permission"}
+{"query_id": "q086", "query": "生产库我想要删改权限走只读申请行不行", "gt_doc_ids": ["doc_permission_010"], "source": "business_sim", "difficulty": "hard", "category": "permission"}
+{"query_id": "q087", "query": "装驱动要临时本地管理员怎么申请", "gt_doc_ids": ["doc_permission_011"], "source": "doc_reverse", "difficulty": "easy", "category": "permission"}
+{"query_id": "q088", "query": "能不能一直留着本机管理员方便装软件", "gt_doc_ids": ["doc_permission_011", "doc_device_006"], "source": "business_sim", "difficulty": "hard", "category": "permission"}
+{"query_id": "q089", "query": "审计要调阅登录日志怎么开权限", "gt_doc_ids": ["doc_permission_009"], "source": "doc_reverse", "difficulty": "easy", "category": "permission"}
+{"query_id": "q090", "query": "我想查同事谁改过我的权限能直接翻日志吗", "gt_doc_ids": ["doc_permission_009"], "source": "business_sim", "difficulty": "hard", "category": "permission"}

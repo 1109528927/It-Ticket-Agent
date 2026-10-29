@@ -1,0 +1,9 @@
+{
+  "version": "queries_v1_gt",
+  "source_backup": "queries_v1.jsonl",
+  "standard_file": "queries_v1_gt.jsonl",
+  "corpus": "corpus_v1",
+  "annotated_at": "2026-10-28",
+  "query_count": 90,
+  "note": "标准问句：hint_doc_ids 为文档级 GT。扩库后旧题 GT 未改；q059～q090 为新增文档配套题。底稿 queries_v1.jsonl 仅作备份。"
+}

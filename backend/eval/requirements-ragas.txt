@@ -1,0 +1,18 @@
+# RAGAs 评测专用依赖（与主应用 requirements.txt 隔离）
+# 安装：uv venv .venv-ragas && UV_LINK_MODE=copy uv pip install --python .venv-ragas/bin/python -r eval/requirements-ragas.txt
+# 冒烟：.venv-ragas/bin/python eval/smoke_ragas.py
+
+ragas==0.2.14
+datasets==3.2.0
+langchain-core==0.3.45
+langchain-openai==0.3.8
+langchain-community==0.3.19
+openai==1.65.5
+pydantic==2.14.1
+python-dotenv==1.0.1
+requests==2.32.3
+numpy==2.5.4
+pandas==3.1.0
+pyarrow==26.0.0
+tiktoken==0.14.0
+tenacity==9.2.1

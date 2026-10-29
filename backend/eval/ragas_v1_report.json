@@ -1,0 +1,48 @@
+{
+  "version": "ragas_v1",
+  "generated_at": "2026-10-29T02:35:03.037585+00:00",
+  "n": 30,
+  "sample_note": "默认约 30 条仅作整体趋势，不作分层归因结论；n 小则置信区间宽。",
+  "macro": {
+    "faithfulness": 0.8405,
+    "answer_relevancy": 0.8083,
+    "context_precision": 0.9778,
+    "context_recall": 0.8743
+  },
+  "fingerprint": {
+    "sample_file": "ragas_v1_dataset.jsonl",
+    "seed_file": "ragas_v1_seed.jsonl",
+    "top_k": 3,
+    "kb_hybrid": "1",
+    "kb_rerank_min_score": "0.22",
+    "kb_rerank_rel_ratio": "0.55",
+    "embed_model": "text-embedding-v3",
+    "gen_model": "qwen-plus",
+    "gen_prompt_version": "thin_gen_v2",
+    "judge_model": "qwen-plus",
+    "judge_same_as_gen": true,
+    "zh_judge_prompt": true,
+    "ragas": "0.2.14",
+    "datasets": "3.2.0",
+    "langchain-core": "0.3.45",
+    "langchain-openai": "0.3.8"
+  },
+  "bias_notes": [
+    "薄封装生成答案通常比线上 Agent 更干净，Faithfulness/Answer Relevancy 可能偏高，不等价端到端。",
+    "裁判与生成同模型，存在自我偏好偏差，分数仅供趋势参考。",
+    "RAGAs Context P/R 与文档级 doc_id P/R 口径不同（排序平均精度 / claim 归因 ≠ ID 命中）。",
+    "Faithfulness 高只说明答案可在 contexts 中找到依据，不证明依据文档本身正确。"
+  ],
+  "diagnosis_hints": {
+    "doc_recall_high_context_low": "篇对了但块未盖住 claims，或裁判拆句偏差；先人工看。",
+    "context_ok_faithfulness_low": "生成胡编或越权承诺。",
+    "context_recall_low_faithfulness_high": "危险：证据缺失但生成自洽编圆；查漏检与胡编边界。",
+    "answer_relevancy_low": "答非所问或跑题。"
+  },
+  "regression_gate": {
+    "note": "相对基线任一核心指标下降超过 threshold 触发人工复核。",
+    "relative_drop_threshold": 0.05,
+    "baseline_report": "ragas_v1_report.baseline.json"
+  },
+  "calib_template": "ragas_calib_template.md"
+}

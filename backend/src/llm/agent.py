@@ -88,10 +88,19 @@ def run_agent(
         raise ValueError("no_key")
 
     graph, system, normalized_role = _pick_graph(role)
-    result = graph.invoke(
-        _initial_state(data, user_id=user_id, role=normalized_role, system=system),
-        config={"recursion_limit": 25},
-    )
+    try:
+        result = graph.invoke(
+            _initial_state(data, user_id=user_id, role=normalized_role, system=system),
+            config={"recursion_limit": 25},
+        )
+    except TimeoutError as e:
+        raise ValueError("timeout") from e
+    except Exception as e:
+        name = type(e).__name__.lower()
+        msg = str(e).lower()
+        if "timeout" in name or "timeout" in msg or "timed out" in msg:
+            raise ValueError("timeout") from e
+        raise
     text = _last_ai_text(result.get("messages") or [])
     if not text:
         raise ValueError("empty_reply")
@@ -162,7 +171,25 @@ def stream_agent(
             yield {"type": "error", "message": "未配置大模型密钥"}
         elif code == "bad_role":
             yield {"type": "error", "message": "当前角色无法使用助手"}
+        elif code == "timeout":
+            yield {
+                "type": "error",
+                "message": "模型响应超时，请稍后重试或缩短问题后再问",
+            }
         else:
             yield {"type": "error", "message": "大模型调用失败，请稍后重试"}
-    except Exception:
-        yield {"type": "error", "message": "大模型调用失败，请稍后重试"}
+    except TimeoutError:
+        yield {
+            "type": "error",
+            "message": "模型响应超时，请稍后重试或缩短问题后再问",
+        }
+    except Exception as exc:
+        name = type(exc).__name__
+        msg = str(exc).lower()
+        if "timeout" in name.lower() or "timeout" in msg or "timed out" in msg:
+            yield {
+                "type": "error",
+                "message": "模型响应超时，请稍后重试或缩短问题后再问",
+            }
+        else:
+            yield {"type": "error", "message": "大模型调用失败，请稍后重试"}

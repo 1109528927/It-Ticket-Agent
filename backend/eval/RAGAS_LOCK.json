@@ -1,0 +1,46 @@
+{
+  "version": "ragas_v1",
+  "locked_at": "2026-10-28",
+  "sample": {
+    "seed_file": "ragas_v1_seed.jsonl",
+    "n": 30,
+    "mix": "8 account / 8 permission / 8 network / 6 other",
+    "note": "约 20 条复用检索 GT 题的 ground_truth；约 10 条 doc_draft 仅作趋势，不作分层结论"
+  },
+  "retrieval": {
+    "top_k": 3,
+    "hybrid": "KB_HYBRID",
+    "rerank_min_score": "KB_RERANK_MIN_SCORE",
+    "rerank_rel_ratio": "KB_RERANK_REL_RATIO"
+  },
+  "generation": {
+    "prompt_version": "thin_gen_v2",
+    "model_env": "DASHSCOPE_MODEL",
+    "note": "薄封装 llm(q,contexts)，非完整 Agent；v2 收紧：禁编路径/端口/错误码、限长，抬 Faithfulness"
+  },
+
+  "judge": {
+    "model_env": "RAGAS_JUDGE_MODEL",
+    "fallback_env": "DASHSCOPE_MODEL",
+    "zh_prompt_override": true,
+    "same_as_gen_bias": "裁判与生成同模型时报告会标注自我偏好偏差"
+  },
+  "packages": {
+    "ragas": "0.2.14",
+    "datasets": "3.2.0",
+    "langchain-core": "0.3.45",
+    "langchain-openai": "0.3.8",
+    "openai": "1.65.5",
+    "numpy": "2.5.4",
+    "pandas": "3.1.0"
+  },
+  "venv": ".venv-ragas",
+  "requirements": "eval/requirements-ragas.txt",
+  "smoke": "eval/smoke_ragas.py",
+  "metrics": [
+    "faithfulness",
+    "answer_relevancy",
+    "context_precision",
+    "context_recall"
+  ]
+}

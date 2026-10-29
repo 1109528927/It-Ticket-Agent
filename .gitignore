@@ -35,3 +35,7 @@ sql-out.txt
 # local data / dumps
 *.sqlite3
 *.db
+
+# RAGAs 专用虚拟环境
+backend/.venv-ragas/
+.venv-ragas/

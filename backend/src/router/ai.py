@@ -25,6 +25,10 @@ def _map_llm_error(exc: ValueError) -> HTTPException:
         return HTTPException(status_code=502, detail="大模型没有返回内容")
     if code == "bad_role":
         return HTTPException(status_code=403, detail="当前角色无法使用助手")
+    if code == "timeout":
+        return HTTPException(
+            status_code=504, detail="模型响应超时，请稍后重试或缩短问题后再问"
+        )
     return HTTPException(status_code=502, detail="大模型调用失败，请稍后重试")
 
 

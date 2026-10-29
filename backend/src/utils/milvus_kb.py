@@ -35,6 +35,9 @@ KB_RERANK_URL = os.getenv(
     "KB_RERANK_URL",
     "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank",
 )
+# 重排截断：绝对下限 + 相对头名比例（任一满足可保留），避免多 GT 第二篇被砍光。0=关闭绝对阈值。
+KB_RERANK_MIN_SCORE = float(os.getenv("KB_RERANK_MIN_SCORE", "0.22"))
+KB_RERANK_REL_RATIO = float(os.getenv("KB_RERANK_REL_RATIO", "0.55"))
 
 # 兼容旧占位名
 COLLECTION_NAME = COLLECTION
@@ -237,6 +240,80 @@ def _rrf_fuse(
     return [{**docs[doc_id], "score": score} for doc_id, score in ordered]
 
 
+def _dedupe_by_source(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """同一 source（同一篇）只留分最高的一块，减轻同文多块占坑。"""
+    best: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+    for h in hits:
+        src = str(h.get("source") or h.get("id") or "")
+        if src not in best:
+            best[src] = h
+            order.append(src)
+            continue
+        old = best[src].get("score")
+        new = h.get("score")
+        try:
+            if new is not None and (old is None or float(new) > float(old)):
+                best[src] = h
+        except (TypeError, ValueError):
+            pass
+    return [best[s] for s in order]
+
+
+def _cut_by_rerank_score(
+    hits: list[dict[str, Any]],
+    *,
+    limit: int,
+    min_score: float,
+    rel_ratio: float = KB_RERANK_REL_RATIO,
+) -> list[dict[str, Any]]:
+    """按重排分截断弱相关。
+
+    保留条件（有分数时）：s >= min_score，或 s >= 头名分 * rel_ratio。
+    保证至少 1 条，最多 limit。min_score<=0 且 rel_ratio<=0 时不截断。
+    """
+    if not hits:
+        return []
+    if min_score <= 0 and rel_ratio <= 0:
+        return hits[:limit]
+
+    def _score_of(h: dict[str, Any]) -> float | None:
+        score = h.get("score")
+        try:
+            return float(score) if score is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    top_s = None
+    for h in hits:
+        top_s = _score_of(h)
+        if top_s is not None:
+            break
+
+    kept: list[dict[str, Any]] = []
+    for h in hits:
+        s = _score_of(h)
+        if s is None:
+            kept.append(h)
+        else:
+            ok_abs = min_score > 0 and s >= min_score
+            ok_rel = (
+                top_s is not None
+                and rel_ratio > 0
+                and s >= top_s * rel_ratio
+            )
+            if ok_abs or ok_rel:
+                kept.append(h)
+            elif kept:
+                # 已有结果且后续掉出双阈值，后面更低，停止
+                break
+        if len(kept) >= limit:
+            break
+    if not kept:
+        return hits[:1]
+    return kept[:limit]
+
+
 def _rerank(
     question: str,
     candidates: list[dict[str, Any]],
@@ -252,6 +329,8 @@ def _rerank(
         return candidates[:top_n]
 
     documents = [(c.get("text") or "")[:2000] for c in candidates]
+    # 多要一些带分结果，便于后面按阈值截断
+    ask_n = min(len(candidates), max(top_n * 3, top_n))
     try:
         import requests
 
@@ -264,7 +343,7 @@ def _rerank(
             json={
                 "model": KB_RERANK_MODEL,
                 "input": {"query": question, "documents": documents},
-                "parameters": {"top_n": top_n, "return_documents": False},
+                "parameters": {"top_n": ask_n, "return_documents": False},
             },
             timeout=30,
         )
@@ -281,10 +360,17 @@ def _rerank(
             item = dict(candidates[idx])
             item["score"] = r.get("relevance_score")
             out.append(item)
-        return out or candidates[:top_n]
+        ranked = out or candidates[:top_n]
+        ranked = _dedupe_by_source(ranked)
+        return _cut_by_rerank_score(
+            ranked,
+            limit=top_n,
+            min_score=KB_RERANK_MIN_SCORE,
+            rel_ratio=KB_RERANK_REL_RATIO,
+        )
     except Exception:
         logger.exception("知识库重排失败，退回 RRF 顺序")
-        return candidates[:top_n]
+        return _dedupe_by_source(candidates)[:top_n]
 
 
 def search_kb(
@@ -296,22 +382,23 @@ def search_kb(
     """混合检索：向量 + BM25 → RRF → 重排；返回 [{id, text, source, category, score}, ...]。
 
     KB_HYBRID=0 时退回纯向量；重排失败或 KB_RERANK=0 时按 RRF 截断。
+    重排后按 KB_RERANK_MIN_SCORE 丢掉弱相关，并按 source 去重。
     """
     recall = max(limit, KB_RECALL_LIMIT)
     dense_hits = _dense_search(question, limit=recall, category=category)
 
     if not KB_HYBRID:
-        return dense_hits[:limit]
+        return _dedupe_by_source(dense_hits)[:limit]
 
     try:
         bm25_hits = _bm25_search(question, limit=recall, category=category)
     except Exception:
         logger.exception("BM25 召回失败，退回纯向量")
-        return dense_hits[:limit]
+        return _dedupe_by_source(dense_hits)[:limit]
 
     fused = _rrf_fuse(dense_hits, bm25_hits)
     if not fused:
-        return dense_hits[:limit]
+        return _dedupe_by_source(dense_hits)[:limit]
 
     # 重排只看融合后的前 recall 条，省调用量
     return _rerank(question, fused[:recall], top_n=limit)

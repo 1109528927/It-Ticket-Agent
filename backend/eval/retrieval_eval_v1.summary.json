@@ -1,0 +1,15 @@
+{
+  "dataset": "dataset_v1.jsonl",
+  "top_k": 3,
+  "filter_category": true,
+  "filter_category_skipped_cross": 7,
+  "kb_hybrid": true,
+  "kb_rerank_min_score": 0.22,
+  "kb_rerank_rel_ratio": 0.55,
+  "count": 90,
+  "macro_precision": 0.787,
+  "macro_recall": 0.9,
+  "macro_f1": 0.8052,
+  "unmapped_chunks": 0,
+  "note": "文档级离线检索指标；Chunk→doc_id 依赖 source 与 manifest 对齐。"
+}
