@@ -93,6 +93,24 @@ async def create_ticket_for_employee(
         detail="创建工单",
     )
     db.add(event)
+
+    # 高危：同步写一条给员工看的说明（创建接口立刻能提示，详情时间线也能看见）
+    try:
+        from automation.reply_gen import build_high_risk_user_notice, looks_high_risk
+
+        blob = f"{title}\n{description}"
+        if looks_high_risk(blob):
+            db.add(
+                TicketEvent(
+                    ticket_id=ticket.id,
+                    actor_id=user_id,
+                    event_type="risk_notice",
+                    detail=build_high_risk_user_notice(blob)[:2000],
+                )
+            )
+    except Exception:
+        pass
+
     await db.flush()
     await db.refresh(ticket)
     return _ticket_to_list_item(ticket)
@@ -113,6 +131,14 @@ async def _ticket_detail_payload(db: AsyncSession, ticket: Ticket) -> dict:
     creator = (
         await db.execute(select(User).where(User.id == ticket.user_id))
     ).scalar_one_or_none()
+    assistant_draft = None
+    try:
+        from crud.automation import get_ticket_draft
+
+        assistant_draft = await get_ticket_draft(db, ticket.id)
+    except Exception:
+        assistant_draft = None
+
     return {
         "id": ticket.id,
         "title": ticket.title,
@@ -128,6 +154,7 @@ async def _ticket_detail_payload(db: AsyncSession, ticket: Ticket) -> dict:
         "events": events,
         "actions": actions,
         "checklist": checklist,
+        "assistant_draft": assistant_draft,
     }
 
 

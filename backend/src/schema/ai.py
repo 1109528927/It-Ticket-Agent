@@ -22,3 +22,8 @@ class ChatRequest(BaseModel):
 
     messages: list[ChatMessage] = Field(default_factory=list)
     ticket_id: int | None = Field(default=None, description="可选，当前关联工单号")
+    thread_id: str | None = Field(
+        default=None,
+        description="可选，LangGraph Checkpointer 线程号；同轮重试可复用",
+        max_length=64,
+    )

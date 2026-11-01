@@ -57,6 +57,13 @@ const router = createRouter({
       component: () => import('@/views/support/KbList.vue')
     },
     {
+      path: '/support/automation',
+      name: 'SupportAutomation',
+      meta: { role: 'support' },
+      component: () => import('@/views/support/Automation.vue')
+    },
+
+    {
       path: '/support/kb/edit/:id?',
       name: 'SupportKbEdit',
       meta: { role: 'support' },
@@ -83,8 +90,23 @@ function readRole() {
   }
 }
 
+function readToken() {
+  const raw = localStorage.getItem('token')
+  if (raw == null) return ''
+  const token = String(raw).trim()
+  // 脏数据：有 key 但空串 / "null"，当未登录，避免直输子路径还能进业务页
+  if (!token || token === 'null' || token === 'undefined') {
+    if (raw != null && raw !== '') {
+      localStorage.removeItem('token')
+      localStorage.removeItem('userInfo')
+    }
+    return ''
+  }
+  return token
+}
+
 router.beforeEach((to) => {
-  const token = localStorage.getItem('token')
+  const token = readToken()
   const role = readRole()
 
   // token 在但角色丢了：清掉，否则会在 /login 和 /employee/home 之间死循环（白屏转圈）
@@ -100,6 +122,7 @@ router.beforeEach((to) => {
     return role === 'support' ? '/support/home' : '/employee/home'
   }
 
+  // 无 token：任意业务子路径（含直接地址栏输入）一律回登录
   if (!token) return '/login'
   if (to.meta.role && to.meta.role !== role) {
     return role === 'support' ? '/support/home' : '/employee/home'

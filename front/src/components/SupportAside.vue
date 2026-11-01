@@ -11,6 +11,7 @@ const user = JSON.parse(localStorage.getItem('userInfo') || '{}')
 const onMenu = (index) => {
   if (index === 'queue') router.push('/support/queue')
   if (index === 'kb') router.push('/support/kb')
+  if (index === 'automation') router.push('/support/automation')
   if (index === 'assistant') router.push('/assistant')
   if (index === 'create') router.push('/support/users/create')
 }
@@ -28,6 +29,7 @@ const logout = () => {
     <el-menu :default-active="active" class="menu" @select="onMenu">
       <el-menu-item index="queue">工单池</el-menu-item>
       <el-menu-item index="kb">知识库</el-menu-item>
+      <el-menu-item index="automation">自动化</el-menu-item>
       <el-menu-item index="assistant">助手</el-menu-item>
       <el-menu-item index="create">开通客服</el-menu-item>
     </el-menu>

@@ -53,7 +53,11 @@ const eventLabel = {
   handoff: '交接摘要',
   checklist: '处理清单',
   employee_confirm: '员工确认解决',
-  employee_reopen: '员工反馈未解决'
+  employee_reopen: '员工反馈未解决',
+  risk_notice: '高风险说明',
+  auto_reply: '系统自动回复',
+  agent_draft: '助手草稿',
+  auto_triage: '自动初审'
 }
 const actionTypeLabel = {
   reset_password: '重置密码',

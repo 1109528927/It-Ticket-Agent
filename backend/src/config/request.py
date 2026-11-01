@@ -6,8 +6,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-# 加载 backend/.env
-load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+# 加载 backend/.env（override=True：避免 shell 里残留其它项目的 DATABASE_URL）
+load_dotenv(Path(__file__).resolve().parents[2] / ".env", override=True)
 
 # 百炼千问（Agent）；密钥只放 .env
 DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY", "")

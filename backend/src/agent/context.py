@@ -2,7 +2,14 @@
 
 from pathlib import Path
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    HumanMessage,
+    RemoveMessage,
+    SystemMessage,
+    ToolMessage,
+)
+from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
@@ -267,7 +274,8 @@ def load_context(state: TicketAgentState) -> dict:
         user_id=user_id,
         ticket_id=int(ticket_id) if ticket_id is not None else None,
     )
-    updates["messages"] = messages
+    # Checkpointer 下 messages 是累加 reducer：先清空再写入本轮拼好的上下文，避免重复堆叠
+    updates["messages"] = [RemoveMessage(id=REMOVE_ALL_MESSAGES), *messages]
     return updates
 
 

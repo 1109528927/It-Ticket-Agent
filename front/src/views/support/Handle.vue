@@ -12,6 +12,7 @@ import {
   toggleChecklistItem
 } from '@/api/ticket'
 import { getErrorMessage } from '@/utils/request'
+import { readReplyDraft } from '@/utils/assistantDraft'
 import SupportAside from '@/components/SupportAside.vue'
 
 const route = useRoute()
@@ -89,7 +90,13 @@ const eventLabel = {
   handoff: '交接摘要',
   checklist: '处理清单',
   employee_confirm: '员工确认解决',
-  employee_reopen: '员工反馈未解决'
+  employee_reopen: '员工反馈未解决',
+  agent_draft: '助手草稿',
+  auto_triage: '自动初审',
+  risk_notice: '高风险说明（已告知员工）',
+  auto_reply: '系统自动回复',
+  sla_unclaimed: 'SLA未认领',
+  sla_confirm_timeout: 'SLA待确认超时'
 }
 const actionTypeLabel = {
   reset_password: '重置密码',
@@ -285,13 +292,20 @@ const insertHandoffToReply = () => {
 }
 
 const adoptDraftFromAssistant = () => {
-  const draft = sessionStorage.getItem('assistant_draft') || ''
-  if (!draft.trim()) {
-    ElMessage.warning('暂无助手草稿，请先在助手页生成回复后点「存为草稿」')
+  const fromDb = detail.value?.assistant_draft?.content?.trim()
+  const fromSession = readReplyDraft(route.params.id)
+  const draft = fromDb || fromSession
+  if (!draft) {
+    ElMessage.warning(
+      '暂无助手草稿：可等建单初审/批跑写入，或在助手页生成后采用'
+    )
     return
   }
-  content.value = draft.trim()
-  ElMessage.success('已采用助手草稿，请核对后发送')
+  content.value = draft
+  const src = fromDb
+    ? `库内草稿（${detail.value?.assistant_draft?.source || 'auto'}）`
+    : '会话草稿'
+  ElMessage.success(`已采用${src}，请核对后发送`)
 }
 
 const submitConfirm = async () => {

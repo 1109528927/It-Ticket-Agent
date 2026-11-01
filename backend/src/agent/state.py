@@ -12,3 +12,8 @@ class TicketAgentState(TypedDict):
     ticket_id: NotRequired[int | None]
     category: NotRequired[str | None]
     origin_user_text: NotRequired[str | None]
+    # 客服内侧 Hub-and-spoke：Supervisor 路由；Resolver 执行；Guard 质检
+    ticket_brief: NotRequired[str | None]
+    route_to: NotRequired[Literal["resolve", "escalate"] | None]
+    route_reason: NotRequired[str | None]
+    guard_fail_count: NotRequired[int]

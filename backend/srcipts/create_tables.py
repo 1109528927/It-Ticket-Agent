@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 load_dotenv(_ROOT / ".env", override=True)
 
 # 导入全部模型，注册到 Base.metadata
+import model.automation  # noqa: F401
 import model.chat  # noqa: F401
 import model.kb  # noqa: F401
 import model.ticket  # noqa: F401

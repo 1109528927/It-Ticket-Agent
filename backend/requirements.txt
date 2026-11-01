@@ -15,6 +15,7 @@ openai>=1.0.0
 langchain>=0.3.0
 langchain-openai>=0.3.0
 langgraph>=0.2.0
+langgraph-checkpoint-sqlite>=2.0.0
 requests>=2.32.0
 urllib3>=2.0.0
 pymilvus>=2.4.0
@@ -25,3 +26,5 @@ python-docx>=1.1.0
 langchain-text-splitters>=0.3.0
 # 可选：配了 REDIS_URL 才用，入库队列
 redis>=5.0.0
+# 工单自动化定时批跑 / SLA
+apscheduler>=3.10.0

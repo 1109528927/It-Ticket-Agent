@@ -1,14 +1,19 @@
 <script setup>
-import { reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { createTicket } from '@/api/ticket'
 import { getErrorMessage } from '@/utils/request'
+import {
+  clearTicketCreateDraft,
+  readTicketCreateDraft
+} from '@/utils/assistantDraft'
 import EmployeeAside from '@/components/EmployeeAside.vue'
 
 const router = useRouter()
 const formRef = ref()
 const loading = ref(false)
+const draftHint = ref('')
 
 const form = reactive({
   category: 'account',
@@ -27,6 +32,31 @@ const rules = {
   priority: [{ required: true, message: '请选择优先级', trigger: 'change' }]
 }
 
+const applyDraft = (draft, { silent } = {}) => {
+  if (!draft) {
+    if (!silent) ElMessage.warning('暂无助手预填，请先在助手里说清问题并生成草稿')
+    return false
+  }
+  form.category = draft.category || form.category
+  form.title = draft.title || ''
+  form.description = draft.description || ''
+  form.priority = draft.priority || 'medium'
+  const miss = (draft.missing_info || '').trim()
+  draftHint.value = miss
+    ? `已采用助手预填。仍缺：${miss}。可改字段后再提交。`
+    : '已采用助手预填，请核对后提交。'
+  if (!silent) ElMessage.success('已填入助手预填')
+  return true
+}
+
+const adoptAssistantDraft = () => {
+  applyDraft(readTicketCreateDraft())
+}
+
+onMounted(() => {
+  applyDraft(readTicketCreateDraft(), { silent: true })
+})
+
 const submit = async () => {
   const ok = await formRef.value?.validate().catch(() => false)
   if (!ok) return
@@ -44,7 +74,22 @@ const submit = async () => {
       ElMessage.error(body.message || '创建失败')
       return
     }
-    ElMessage.success(body.message || '创建成功')
+    clearTicketCreateDraft()
+    const created = body.data || {}
+    if (created.high_risk) {
+      ElMessage({
+        type: 'warning',
+        duration: 8000,
+        showClose: true,
+        message: body.message || '创建成功（高风险，需客服人工处理）'
+      })
+      if (created.id != null) {
+        router.push(`/employee/tickets/${created.id}`)
+        return
+      }
+    } else {
+      ElMessage.success(body.message || '创建成功')
+    }
     router.push('/employee/tickets')
   } catch (e) {
     ElMessage.error(getErrorMessage(e, '创建失败'))
@@ -59,6 +104,17 @@ const submit = async () => {
     <EmployeeAside active="create" />
     <main class="main">
       <h2>新建工单</h2>
+      <p class="hint">
+        熟手可直接填表。不会填时去
+        <el-button link type="primary" @click="router.push('/assistant')">助手</el-button>
+        用对话补全，再回这里「采用助手预填」。
+      </p>
+      <div class="draft-bar">
+        <el-button size="small" type="primary" plain @click="adoptAssistantDraft">
+          采用助手预填
+        </el-button>
+        <span v-if="draftHint" class="draft-hint">{{ draftHint }}</span>
+      </div>
       <el-form
         ref="formRef"
         :model="form"
@@ -110,6 +166,24 @@ const submit = async () => {
 .main {
   flex: 1;
   padding: 24px 32px;
+}
+.hint {
+  color: #666;
+  font-size: 13px;
+  margin: 0 0 12px;
+  max-width: 640px;
+  line-height: 1.5;
+}
+.draft-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  max-width: 640px;
+}
+.draft-hint {
+  font-size: 13px;
+  color: #3a7a3a;
 }
 .form {
   max-width: 640px;

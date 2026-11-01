@@ -1,21 +1,29 @@
 import request from '@/utils/request'
 
 /** 整包多轮对话 POST /api/ai/chat */
-export function chatApi(messages, ticketId) {
+export function chatApi(messages, ticketId, threadId) {
   return request({
     url: '/api/ai/chat',
     method: 'post',
-    data: { messages, ticket_id: ticketId ?? null },
+    data: {
+      messages,
+      ticket_id: ticketId ?? null,
+      thread_id: threadId ?? null
+    },
     timeout: 90000
   })
 }
 
 /** 业务图整包 POST /api/ai/agent */
-export function agentApi(messages, ticketId) {
+export function agentApi(messages, ticketId, threadId) {
   return request({
     url: '/api/ai/agent',
     method: 'post',
-    data: { messages, ticket_id: ticketId ?? null },
+    data: {
+      messages,
+      ticket_id: ticketId ?? null,
+      thread_id: threadId ?? null
+    },
     timeout: 90000
   })
 }
@@ -33,7 +41,7 @@ export function chatHistoryApi(ticketId) {
  * 流式对话主路径 POST /api/ai/chat/stream（SSE）
  * status 灰字只给 onEvent，不要推进 messages 数组。
  */
-export async function chatStreamApi(messages, onEvent, ticketId) {
+export async function chatStreamApi(messages, onEvent, ticketId, threadId) {
   const token = localStorage.getItem('token')
   const res = await fetch('/api/ai/chat/stream', {
     method: 'POST',
@@ -44,7 +52,8 @@ export async function chatStreamApi(messages, onEvent, ticketId) {
     },
     body: JSON.stringify({
       messages,
-      ticket_id: ticketId ?? null
+      ticket_id: ticketId ?? null,
+      thread_id: threadId ?? null
     })
   })
   if (res.status === 401) throw new Error('登录已失效，请重新登录')

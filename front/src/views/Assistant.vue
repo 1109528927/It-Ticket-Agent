@@ -3,8 +3,14 @@ import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { chatHistoryApi, chatStreamApi } from '@/api/ai'
-import { listMyTickets, listSupportTickets } from '@/api/ticket'
+import { createTicket, listMyTickets, listSupportTickets } from '@/api/ticket'
 import { getErrorMessage } from '@/utils/request'
+import {
+  clearTicketCreateDraft,
+  readTicketCreateDraft,
+  saveReplyDraft,
+  saveTicketCreateDraft
+} from '@/utils/assistantDraft'
 import SupportAside from '@/components/SupportAside.vue'
 import EmployeeAside from '@/components/EmployeeAside.vue'
 
@@ -13,12 +19,58 @@ const router = useRouter()
 const user = JSON.parse(localStorage.getItem('userInfo') || '{}')
 const isSupport = computed(() => user.role === 'support')
 const sending = ref(false)
+const creating = ref(false)
 const statusText = ref('')
 const input = ref('')
 const listRef = ref(null)
 const messages = reactive([])
 const ticketId = ref(null)
 const ticketOptions = ref([])
+const threadId = ref(null)
+/** 员工：对话预填待确认建单 */
+const pendingDraft = ref(null)
+
+const categoryLabel = {
+  account: '账号',
+  device: '设备',
+  network: '网络',
+  permission: '权限'
+}
+
+const priorityLabel = {
+  low: '低',
+  medium: '中',
+  high: '高'
+}
+
+const threadStorageKey = (tid) =>
+  `assistant_thread_${user.id || 0}_${user.role || 'x'}_t${tid ?? 0}`
+
+const readStoredThread = () => {
+  try {
+    return sessionStorage.getItem(threadStorageKey(ticketId.value)) || null
+  } catch {
+    return null
+  }
+}
+
+const writeStoredThread = (id) => {
+  if (!id) return
+  threadId.value = id
+  try {
+    sessionStorage.setItem(threadStorageKey(ticketId.value), id)
+  } catch {
+    /* ignore */
+  }
+}
+
+const syncPendingDraftFromStorage = () => {
+  if (isSupport.value) {
+    pendingDraft.value = null
+    return
+  }
+  pendingDraft.value = readTicketCreateDraft()
+}
 
 const scrollBottom = async () => {
   await nextTick()
@@ -58,23 +110,88 @@ const loadHistory = async () => {
 }
 
 watch(ticketId, () => {
+  threadId.value = readStoredThread()
   loadHistory()
 })
 
 onMounted(async () => {
+  threadId.value = readStoredThread()
+  syncPendingDraftFromStorage()
   await loadTickets()
   await loadHistory()
 })
 
 const saveLastAssistantAsDraft = () => {
+  if (!isSupport.value) {
+    ElMessage.warning('员工请用对话生成工单预填，就绪后在下方点「确认建单」')
+    return
+  }
+  if (!ticketId.value) {
+    ElMessage.warning('请先关联工单，再存回复草稿')
+    return
+  }
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     if (messages[i].role === 'assistant' && messages[i].content?.trim()) {
-      sessionStorage.setItem('assistant_draft', messages[i].content.trim())
-      ElMessage.success('已存为草稿，可在处理页点「采用助手草稿」')
+      saveReplyDraft(ticketId.value, messages[i].content.trim())
+      ElMessage.success('已存为处理页草稿，可到该单处理页「采用助手草稿」')
       return
     }
   }
   ElMessage.warning('没有可保存的助手回复')
+}
+
+const dismissPendingDraft = () => {
+  clearTicketCreateDraft()
+  pendingDraft.value = null
+}
+
+const confirmCreateTicket = async () => {
+  const draft = pendingDraft.value || readTicketCreateDraft()
+  if (!draft?.title || !draft?.description || !draft?.category) {
+    ElMessage.warning('暂无待确认的工单预填，请先对话生成')
+    return
+  }
+  if (creating.value) return
+
+  creating.value = true
+  try {
+    const res = await createTicket({
+      category: draft.category,
+      title: String(draft.title).trim(),
+      description: String(draft.description).trim(),
+      priority: draft.priority || 'medium'
+    })
+    const body = res.data
+    if (body.code !== 200) {
+      ElMessage.error(body.message || '创建失败')
+      return
+    }
+    clearTicketCreateDraft()
+    pendingDraft.value = null
+    const created = body.data || {}
+    const newId = created?.id
+    if (created.high_risk) {
+      ElMessage({
+        type: 'warning',
+        duration: 8000,
+        showClose: true,
+        message: body.message || '工单已创建（高风险，需客服人工处理）'
+      })
+    } else {
+      ElMessage.success(body.message || '工单已创建')
+    }
+    await loadTickets()
+    if (newId != null) {
+      ticketId.value = newId
+      router.push(`/employee/tickets/${newId}`)
+    } else {
+      router.push('/employee/tickets')
+    }
+  } catch (e) {
+    ElMessage.error(getErrorMessage(e, '创建失败'))
+  } finally {
+    creating.value = false
+  }
 }
 
 const goHandleConfirm = () => {
@@ -119,6 +236,28 @@ const send = async () => {
           statusText.value = event.message || ''
           return
         }
+        if (event.type === 'thread' && event.thread_id) {
+          writeStoredThread(event.thread_id)
+          return
+        }
+        if (event.type === 'ticket_draft' && event.draft) {
+          saveTicketCreateDraft(event.draft)
+          pendingDraft.value = { ...event.draft }
+          ElMessage.success({
+            message: '工单预填已就绪，请在下方核对后点「确认建单」',
+            duration: 5000
+          })
+          nextTick(() => scrollBottom())
+          return
+        }
+        if (event.type === 'reply_draft' && event.content) {
+          const tid = event.ticket_id ?? ticketId.value
+          if (tid != null) {
+            saveReplyDraft(tid, event.content)
+            ElMessage.success('回复草稿已就绪，可到处理页「采用助手草稿」')
+          }
+          return
+        }
         if (event.type === 'token' && event.content) {
           messages[assistantIndex].content += event.content
           scrollBottom()
@@ -128,10 +267,12 @@ const send = async () => {
           throw new Error(event.message || '对话失败')
         }
         if (event.type === 'done') {
+          if (event.thread_id) writeStoredThread(event.thread_id)
           statusText.value = ''
         }
       },
-      ticketId.value
+      ticketId.value,
+      threadId.value
     )
 
     if (!messages[assistantIndex].content.trim()) {
@@ -156,8 +297,12 @@ const send = async () => {
     <main class="main">
       <h2>工单助手</h2>
       <p class="hint">
-        SSE 流式输出。灰字进度只显示在下方，不会写进对话气泡。可选关联工单以便续聊和加载 Skill。
-        助手挂了不影响工单页认领与确认。
+        <template v-if="isSupport">
+          关联工单后可让助手生成「带依据的回复草稿」，处理页一键采用；高危仍须页面确认。
+        </template>
+        <template v-else>
+          直接说现象，助手追问补全后给出预填；在本页点「确认建单」即可创建（仍由你确认，不会自动落库）。
+        </template>
       </p>
       <div class="toolbar">
         <span class="label">关联工单</span>
@@ -165,7 +310,7 @@ const send = async () => {
           v-model="ticketId"
           clearable
           filterable
-          placeholder="不选则闲聊（不加载 Skill）"
+          :placeholder="isSupport ? '回复草稿须关联工单' : '查单/交接可选；提单预填可不选'"
           style="width: 360px"
         >
           <el-option
@@ -175,7 +320,9 @@ const send = async () => {
             :value="opt.value"
           />
         </el-select>
-        <el-button size="small" @click="saveLastAssistantAsDraft">存为草稿</el-button>
+        <el-button v-if="isSupport" size="small" @click="saveLastAssistantAsDraft">
+          存为处理页草稿
+        </el-button>
         <el-button
           v-if="isSupport"
           size="small"
@@ -195,7 +342,51 @@ const send = async () => {
           <div class="role">{{ m.role === 'user' ? '我' : '助手' }}</div>
           <div class="content">{{ m.content || (sending && i === messages.length - 1 ? '…' : '') }}</div>
         </div>
-        <el-empty v-if="!messages.length" description="说一句试试，例如：池子里有哪些单" />
+        <div v-if="!isSupport && pendingDraft" class="draft-card">
+          <div class="draft-title">待确认工单预填</div>
+          <div class="draft-row">
+            <span class="k">类别</span>
+            {{ categoryLabel[pendingDraft.category] || pendingDraft.category }}
+          </div>
+          <div class="draft-row">
+            <span class="k">优先级</span>
+            {{ priorityLabel[pendingDraft.priority] || pendingDraft.priority || '中' }}
+          </div>
+          <div class="draft-row">
+            <span class="k">标题</span>
+            {{ pendingDraft.title }}
+          </div>
+          <div class="draft-row block">
+            <span class="k">描述</span>
+            <div class="draft-desc">{{ pendingDraft.description }}</div>
+          </div>
+          <div v-if="pendingDraft.missing_info" class="draft-miss">
+            仍缺：{{ pendingDraft.missing_info }}
+          </div>
+          <div class="draft-actions">
+            <el-button
+              type="primary"
+              :loading="creating"
+              :disabled="sending"
+              @click="confirmCreateTicket"
+            >
+              确认建单
+            </el-button>
+            <el-button :disabled="creating" @click="dismissPendingDraft">放弃预填</el-button>
+            <el-button
+              link
+              type="primary"
+              :disabled="creating"
+              @click="router.push('/employee/tickets/create')"
+            >
+              去新建页再改
+            </el-button>
+          </div>
+        </div>
+        <el-empty
+          v-if="!messages.length && !(pendingDraft && !isSupport)"
+          description="说一句试试，例如：电脑登不上 / 池子里有哪些单"
+        />
       </div>
       <p v-if="statusText" class="status">{{ statusText }}</p>
       <div class="composer">
@@ -280,6 +471,53 @@ const send = async () => {
 .bubble.user .content {
   background: #ecf5ff;
   border-color: #d9ecff;
+}
+.draft-card {
+  margin: 16px 0 8px;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid #c6e2ff;
+  border-radius: 8px;
+  max-width: 100%;
+}
+.draft-title {
+  font-weight: 600;
+  margin-bottom: 10px;
+  color: #303133;
+}
+.draft-row {
+  font-size: 13px;
+  margin-bottom: 6px;
+  line-height: 1.5;
+}
+.draft-row .k {
+  display: inline-block;
+  min-width: 48px;
+  color: #909399;
+  margin-right: 8px;
+}
+.draft-row.block .k {
+  display: block;
+  margin-bottom: 4px;
+}
+.draft-desc {
+  white-space: pre-wrap;
+  color: #303133;
+  background: #f5f7fa;
+  padding: 8px 10px;
+  border-radius: 4px;
+}
+.draft-miss {
+  font-size: 12px;
+  color: #e6a23c;
+  margin: 8px 0;
+}
+.draft-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
 }
 .composer {
   margin-top: 16px;

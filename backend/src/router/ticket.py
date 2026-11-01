@@ -109,10 +109,23 @@ async def create_ticket(
         description=body.description,
         priority=body.priority,
     )
-    return success_response(
-        message="创建成功",
-        data=TicketListItem.model_validate(row).model_dump(),
+    # 建单后异步初审：类别/优先级建议 + 带依据回复草稿（不阻塞创建响应）
+    try:
+        from automation.triage import schedule_triage_after_create
+
+        schedule_triage_after_create(int(row["id"]))
+    except Exception:
+        pass
+
+    from automation.reply_gen import create_success_message_for_user
+
+    msg, high_risk = create_success_message_for_user(
+        title=body.title, description=body.description
     )
+    data = TicketListItem.model_validate(row).model_dump()
+    # 前端要用：高危时换警告提示，并引导去详情看说明
+    data["high_risk"] = high_risk
+    return success_response(message=msg, data=data)
 
 
 @router.get("/{ticket_id}")

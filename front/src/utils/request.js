@@ -6,6 +6,18 @@ const instance = axios.create({
 })
 
 export function getErrorMessage(error, fallback = '请求失败') {
+  const status = error?.response?.status
+  // 代理连不上后端时常见 502，别和「没登录」搞混
+  if (status === 502 || status === 503 || status === 504) {
+    return '后端服务连不上（请确认 uvicorn 已启动），不是登录过期'
+  }
+  if (!error?.response && error?.message) {
+    const msg = String(error.message)
+    if (/network|timeout|exceeded/i.test(msg)) {
+      return '网络异常或后端无响应，请确认服务已启动'
+    }
+  }
+
   const data = error?.response?.data
   if (!data) return error?.message || fallback
 
