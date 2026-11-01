@@ -12,8 +12,14 @@ from sqlalchemy import select
 
 from automation.actor import get_automation_actor_id
 from automation.config import PER_TICKET_RETRIES
-from automation.drafts import upsert_reply_draft
+from automation.drafts import (
+    claim_pending_to_automation,
+    mark_draft_awaiting_adopt,
+    send_auto_reply,
+    upsert_reply_draft,
+)
 from automation.reply_gen import generate_reply_draft_for_ticket, looks_high_risk
+from automation.settings_store import load_config_sync
 from config.request import DASHSCOPE_API_KEY, SyncSessionLocal
 from llm.client import model
 from model.ticket import Ticket, TicketEvent
@@ -120,10 +126,29 @@ def run_triage_for_ticket(ticket_id: int) -> dict[str, Any]:
         status=status,
     )
     risk = looks_high_risk(f"{title}\n{description}")
+    base_meta = dict(draft_pack.get("meta") or {})
+    conf = float(base_meta.get("confidence") or 0.0)
+    parse_ok = bool(base_meta.get("parse_ok", True))
+    if not parse_ok:
+        conf = 0.0
+
+    cfg = load_config_sync()
+    thr = float(cfg.get("night_confidence_threshold") or 0.8)
+    auto_send = bool(cfg.get("auto_send_simple_reply"))
+    night_resolve = bool(cfg.get("enable_night_auto_resolve"))
+    can_auto_resolve = (
+        night_resolve and (not risk) and conf >= thr and parse_ok
+    )
+    will_auto_send = (auto_send or can_auto_resolve) and (not risk)
+
     meta = {
-        **(draft_pack.get("meta") or {}),
+        **base_meta,
         "triage": suggestion,
         "high_risk_hint": risk,
+        "confidence": conf,
+        "awaiting_adopt": (not risk) and (not will_auto_send),
+        "auto_sent": will_auto_send,
+        "auto_resolved": can_auto_resolve,
     }
     upsert_reply_draft(
         ticket_id=tid,
@@ -133,7 +158,16 @@ def run_triage_for_ticket(ticket_id: int) -> dict[str, Any]:
         actor_id=actor_id,
         event_detail=(
             "建单初审：已生成建议与回复草稿"
-            + ("（高危：仅起草，已告知员工等人工处理）" if risk else "")
+            + (
+                "（高危：仅起草，已告知员工等人工处理）"
+                if risk
+                else (
+                    "（非高危：已按开关自动发送"
+                    + ("并结案）" if can_auto_resolve else "，进入等反馈）")
+                    if will_auto_send
+                    else "（非高危：专席可核对/一键执行）"
+                )
+            )
         ),
     )
     if risk:
@@ -145,13 +179,27 @@ def run_triage_for_ticket(ticket_id: int) -> dict[str, Any]:
             description=description,
             actor_id=actor_id,
         )
+    else:
+        # 建单时若未挂上专席（异常兜底），初审再认领一次
+        claim_pending_to_automation(
+            ticket_id=tid,
+            actor_id=actor_id,
+            detail="建单初审兜底：非高危挂简单单专席",
+        )
+        if will_auto_send:
+            send_auto_reply(
+                ticket_id=tid,
+                content=draft_pack["content"],
+                actor_id=actor_id,
+                resolve=can_auto_resolve,
+            )
+        else:
+            mark_draft_awaiting_adopt(ticket_id=tid, actor_id=actor_id)
     return {"ticket_id": tid, "triage": suggestion, "draft_len": len(draft_pack["content"])}
 
 
 def schedule_triage_after_create(ticket_id: int) -> None:
     """不阻塞 HTTP：后台线程跑初审。开关读 automation_config。"""
-    from automation.settings_store import load_config_sync
-
     cfg = load_config_sync()
     if not cfg.get("enable_triage_on_create", True):
         return

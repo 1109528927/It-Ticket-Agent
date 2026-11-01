@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from router.ai import router as ai_router
 from router.automation import router as automation_router
+from router.dashboard import router as dashboard_router
 from router.kb import router as kb_router
 from router.loginuser import router as user_router
 from router.ticket import router as ticket_router
@@ -44,3 +45,4 @@ app.include_router(ticket_router)
 app.include_router(kb_router)
 app.include_router(ai_router)
 app.include_router(automation_router)
+app.include_router(dashboard_router)

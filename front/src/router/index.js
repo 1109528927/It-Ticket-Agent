@@ -39,6 +39,12 @@ const router = createRouter({
       component: () => import('@/views/support/Queue.vue')
     },
     {
+      path: '/support/dashboard',
+      name: 'SupportDashboard',
+      meta: { role: 'support' },
+      component: () => import('@/views/support/Dashboard.vue')
+    },
+    {
       path: '/support/tickets/:id',
       name: 'SupportHandle',
       meta: { role: 'support' },

@@ -115,3 +115,24 @@ export function employeeReopenUnresolved(id, data) {
     data
   })
 }
+
+export function adoptTicketDraft(id) {
+  return request({
+    url: `/api/tickets/${id}/adopt-draft`,
+    method: 'post'
+  })
+}
+
+export function oneClickExecuteTicket(id) {
+  return request({
+    url: `/api/tickets/${id}/one-click-execute`,
+    method: 'post'
+  })
+}
+
+export function getDashboardStats() {
+  return request({
+    url: '/api/dashboard/stats',
+    method: 'get'
+  })
+}

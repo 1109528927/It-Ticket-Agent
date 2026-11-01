@@ -32,6 +32,9 @@ const statusLabel = {
   pending: '待处理',
   processing: '处理中',
   pending_confirm: '待确认',
+  waiting_feedback: '等你反馈',
+  auto_resolved: '系统已自动结案',
+  need_manual: '已升级人工',
   resolved: '已解决',
   closed: '已关闭'
 }
@@ -105,7 +108,19 @@ const load = async () => {
 }
 
 const canCancel = computed(() => detail.value?.status === 'pending')
-const canConfirmResolved = computed(() => detail.value?.status === 'resolved')
+const canConfirmResolved = computed(() =>
+  ['resolved', 'waiting_feedback', 'auto_resolved'].includes(detail.value?.status)
+)
+const feedbackHint = computed(() => {
+  const s = detail.value?.status
+  if (s === 'waiting_feedback') {
+    return '客服已回复，请确认是否解决；仍不行可点「仍未解决」或在下方补充说明。'
+  }
+  if (s === 'auto_resolved') {
+    return '系统已按草稿自动结案。若问题仍在，请点「仍未解决」。'
+  }
+  return ''
+})
 
 const submitComment = async () => {
   const text = comment.value.trim()
@@ -256,6 +271,14 @@ onMounted(load)
         </div>
       </div>
       <template v-if="detail">
+        <el-alert
+          v-if="feedbackHint"
+          type="info"
+          :closable="false"
+          show-icon
+          class="feedback-alert"
+          :title="feedbackHint"
+        />
         <el-descriptions :column="2" border>
           <el-descriptions-item label="编号">{{ detail.id }}</el-descriptions-item>
           <el-descriptions-item label="状态">
@@ -340,6 +363,9 @@ onMounted(load)
 .main {
   flex: 1;
   padding: 24px 32px;
+}
+.feedback-alert {
+  margin-bottom: 16px;
 }
 .head {
   display: flex;

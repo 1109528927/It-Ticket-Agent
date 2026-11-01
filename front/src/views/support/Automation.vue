@@ -31,6 +31,10 @@ const form = reactive({
   sla_interval_minutes: 15,
   skip_high_risk: false,
   auto_send_simple_reply: false,
+  enable_night_auto_resolve: false,
+  night_confidence_threshold: 0.8,
+  enable_feedback_sla: true,
+  feedback_idle_days: 3,
   backlog_categories: []
 })
 
@@ -61,11 +65,15 @@ const triggerLabel = {
 const actionLabel = {
   draft_reply: '生成回复草稿',
   draft_reply_skip_risk: '高危跳过（等白班）',
+  claim_await_adopt: '认领并待采用',
   auto_reply: '简单单已自动回复',
+  auto_resolved: '高置信自动结案',
   sla_unclaimed: '催办未认领',
   sla_unclaimed_skip: '未认领（已催过）',
   sla_confirm_timeout: '催办待确认超时',
-  sla_confirm_skip: '待确认（已催过）'
+  sla_confirm_skip: '待确认（已催过）',
+  sla_feedback_nudge: '催办等反馈',
+  sla_feedback_skip: '等反馈（已催过）'
 }
 
 const formatTime = (v) => {
@@ -124,6 +132,10 @@ const applyConfig = (data) => {
   form.sla_interval_minutes = data.sla_interval_minutes || 15
   form.skip_high_risk = !!data.skip_high_risk
   form.auto_send_simple_reply = !!data.auto_send_simple_reply
+  form.enable_night_auto_resolve = !!data.enable_night_auto_resolve
+  form.night_confidence_threshold = Number(data.night_confidence_threshold ?? 0.8)
+  form.enable_feedback_sla = data.enable_feedback_sla !== false
+  form.feedback_idle_days = Number(data.feedback_idle_days ?? 3)
   form.backlog_categories = Array.isArray(data.backlog_categories)
     ? [...data.backlog_categories]
     : []
@@ -231,8 +243,9 @@ onMounted(async () => {
     <main class="main">
       <h2>工单自动化</h2>
       <p class="hint">
-        每位客服都能用：可以开关自动起草、超时催办，改执行节奏和类别策略。
-        夜班可开「简单单自动回复」；高危只起草等白班，不会自动改密或结案。关掉总开关后定时任务会静默跳过。
+        分工：非高危落到简单单专席（simple_desk），可一键执行发送；高危留未认领池，由其他客服提出并确认。
+        无人值守是平台能力：每位客服都能在本页开关「自动回复 / 高置信结案 / 催办」，不是只有专席才有。
+        高危永远不会因无人值守而改密改权。关掉总开关后定时任务静默跳过。
       </p>
 
       <el-tabs v-model="activeTab">
@@ -322,12 +335,39 @@ onMounted(async () => {
             <el-form-item label="简单单自动回复">
               <el-switch
                 v-model="form.auto_send_simple_reply"
-                active-text="开启（适合夜班无人值守）"
-                inactive-text="关闭（只起草）"
+                active-text="开启（发回复进等反馈）"
+                inactive-text="关闭（认领+草稿待采用）"
               />
               <p class="field-tip" style="margin: 8px 0 0">
-                开启后：非高危单起草完会自动写成正式回复并留审计记录；含改密/改权语义的单仍只起草，等白班处理。不会自动确认高危、不会自动结案。
+                关闭时：非高危认领并写草稿待核对。开启时：建单初审与批跑都会对非高危直接发回复进「等反馈」。高危永不自动发。
               </p>
+            </el-form-item>
+            <el-form-item label="高置信自动结案">
+              <el-switch
+                v-model="form.enable_night_auto_resolve"
+                active-text="开启（confidence 达标 → auto_resolved）"
+                inactive-text="关闭"
+              />
+            </el-form-item>
+            <el-form-item label="结案置信度门槛">
+              <el-input-number
+                v-model="form.night_confidence_threshold"
+                :min="0"
+                :max="1"
+                :step="0.05"
+                :precision="2"
+              />
+            </el-form-item>
+            <el-form-item label="等反馈催办">
+              <el-switch
+                v-model="form.enable_feedback_sla"
+                active-text="开启"
+                inactive-text="关闭"
+              />
+            </el-form-item>
+            <el-form-item label="等反馈超过几天催">
+              <el-input-number v-model="form.feedback_idle_days" :min="1" :max="30" />
+              <span class="unit">天</span>
             </el-form-item>
 
             <el-form-item label="上次起草">
@@ -426,7 +466,7 @@ onMounted(async () => {
                 </template>
               </el-table-column>
             </el-table>
-            <p class="tip">到对应工单处理页，可用「采用助手草稿」把生成的回复填进输入框。</p>
+            <p class="tip">到对应工单处理页：非高危草稿会预填，可一键执行发送或改后发送。</p>
           </section>
         </el-tab-pane>
       </el-tabs>

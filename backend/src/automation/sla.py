@@ -137,6 +137,66 @@ def run_sla_sweep() -> dict[str, Any]:
                 }
             )
 
+        # 3) 等反馈超时：催员工（不代结案）
+        from automation.settings_store import load_config_sync
+
+        cfg = load_config_sync()
+        if cfg.get("enable_feedback_sla", True):
+            idle_days = max(1, int(cfg.get("feedback_idle_days") or 3))
+            feedback_before = now - timedelta(days=idle_days)
+            fb_rows = list(
+                db.execute(
+                    select(Ticket).where(
+                        Ticket.status == "waiting_feedback",
+                        Ticket.updated_at <= feedback_before,
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            for t in fb_rows:
+                if _already_nudged(db, t.id, "sla_feedback_nudge", dedupe_since):
+                    results.append(
+                        {
+                            "ticket_id": t.id,
+                            "action": "sla_feedback_skip",
+                            "success": True,
+                            "detail": "近期已催反馈，本次跳过",
+                        }
+                    )
+                    continue
+                nudge = (
+                    f"您好，工单#{t.id} 此前已回复处理说明。"
+                    f"若问题已解决，请在本单留言「好了」；"
+                    f"若仍未解决，请留言「还是不行」并补充现象，我们会升级人工处理。"
+                    f"（已超过 {idle_days} 天未反馈）"
+                )
+                db.add(
+                    TicketEvent(
+                        ticket_id=t.id,
+                        actor_id=actor_id,
+                        event_type="reply",
+                        detail=nudge,
+                    )
+                )
+                db.add(
+                    TicketEvent(
+                        ticket_id=t.id,
+                        actor_id=actor_id,
+                        event_type="sla_feedback_nudge",
+                        detail=f"等反馈超过 {idle_days} 天，已自动催办员工",
+                    )
+                )
+                t.updated_at = now
+                results.append(
+                    {
+                        "ticket_id": t.id,
+                        "action": "sla_feedback_nudge",
+                        "success": True,
+                        "detail": f"已催办等反馈（>{idle_days}天）",
+                    }
+                )
+
         db.commit()
 
     ok = sum(1 for r in results if r.get("success"))

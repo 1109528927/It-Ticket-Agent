@@ -13,6 +13,7 @@ _LIST_COLUMNS = (
     Ticket.category,
     Ticket.status,
     Ticket.priority,
+    Ticket.escalate,
     Ticket.updated_at,
 )
 
@@ -24,6 +25,7 @@ def _ticket_to_list_item(ticket: Ticket) -> dict:
         "category": ticket.category,
         "status": ticket.status,
         "priority": ticket.priority,
+        "escalate": int(getattr(ticket, "escalate", 0) or 0),
         "updated_at": ticket.updated_at,
     }
 
@@ -51,18 +53,93 @@ async def list_tickets_for_support(
     support_id: int,
     scope: str | None = None,
     status: str | None = None,
+    lane: str | None = None,
 ) -> list[dict]:
-    """工单池：不按提单人 user_id 收窄。scope=unclaimed 未认领，mine 当前客服认领的。"""
+    """工单池：不按提单人 user_id 收窄。
+    scope=unclaimed / mine / simple_desk；
+    lane=rag_ready（高置信可直接回）/ need_review（需核对）/ tracking（等反馈跟踪）。
+    """
+    import json
+
+    from model.automation import TicketAssistantDraft
+
     stmt = select(*_LIST_COLUMNS)
     if scope == "unclaimed":
         stmt = stmt.where(Ticket.assignee_id.is_(None))
     elif scope == "mine":
         stmt = stmt.where(Ticket.assignee_id == support_id)
+    elif scope == "simple_desk":
+        from automation.actor import get_simple_desk_actor_id
+
+        desk_id = get_simple_desk_actor_id()
+        stmt = stmt.where(Ticket.assignee_id == int(desk_id))
     if status:
         stmt = stmt.where(Ticket.status == status)
     stmt = stmt.order_by(Ticket.updated_at.desc(), Ticket.id.desc())
     rows = (await db.execute(stmt)).mappings().all()
-    return [dict(row) for row in rows]
+    items = [dict(row) for row in rows]
+    if not items:
+        return items
+
+    # 与夜班自动结案默认门槛一致；配置可读失败则 0.8
+    thr = 0.8
+    try:
+        from automation.settings_store import load_config_sync
+
+        thr = float(load_config_sync().get("night_confidence_threshold") or 0.8)
+    except Exception:
+        thr = 0.8
+
+    ids = [int(r["id"]) for r in items]
+    draft_rows = (
+        await db.execute(
+            select(TicketAssistantDraft).where(TicketAssistantDraft.ticket_id.in_(ids))
+        )
+    ).scalars().all()
+    draft_map = {int(d.ticket_id): d for d in draft_rows}
+    for it in items:
+        d = draft_map.get(int(it["id"]))
+        meta: dict = {}
+        if d and d.meta_json:
+            try:
+                meta = json.loads(d.meta_json) or {}
+            except json.JSONDecodeError:
+                meta = {}
+        it["has_draft"] = d is not None
+        risk_hint = bool(meta.get("high_risk_hint"))
+        it["high_risk_hint"] = risk_hint
+        awaiting = bool(meta.get("awaiting_adopt"))
+        if (
+            d is not None
+            and it.get("status") == "processing"
+            and not meta.get("auto_sent")
+            and not risk_hint
+        ):
+            awaiting = True if meta.get("awaiting_adopt", True) else False
+        it["awaiting_adopt"] = bool(awaiting)
+        conf = None
+        try:
+            if meta.get("confidence") is not None:
+                conf = float(meta.get("confidence"))
+        except (TypeError, ValueError):
+            conf = None
+        it["draft_confidence"] = conf
+        # RAG 高置信 + 非高危 + 待采用 → 可直接回，人工事后跟踪
+        it["rag_ready"] = bool(
+            awaiting and (not risk_hint) and conf is not None and conf >= thr
+        )
+
+    if lane == "rag_ready":
+        items = [i for i in items if i.get("rag_ready")]
+    elif lane == "need_review":
+        items = [
+            i
+            for i in items
+            if i.get("awaiting_adopt") and not i.get("rag_ready")
+        ]
+    elif lane == "tracking":
+        items = [i for i in items if i.get("status") == "waiting_feedback"]
+    return items
 
 
 async def create_ticket_for_employee(
@@ -94,8 +171,10 @@ async def create_ticket_for_employee(
     )
     db.add(event)
 
-    # 高危：同步写一条给员工看的说明（创建接口立刻能提示，详情时间线也能看见）
+    # 建单即时分流：关键词判风险（不强制再调 Agent）
+    # 非高危 → 挂简单单专席 processing；高危 → 留 pending 等其他客服
     try:
+        from automation.actor import get_simple_desk_actor_id
         from automation.reply_gen import build_high_risk_user_notice, looks_high_risk
 
         blob = f"{title}\n{description}"
@@ -108,6 +187,18 @@ async def create_ticket_for_employee(
                     detail=build_high_risk_user_notice(blob)[:2000],
                 )
             )
+        else:
+            desk_id = get_simple_desk_actor_id()
+            ticket.assignee_id = int(desk_id)
+            ticket.status = "processing"
+            db.add(
+                TicketEvent(
+                    ticket_id=ticket.id,
+                    actor_id=int(desk_id),
+                    event_type="claim",
+                    detail="建单即时分流：非高危已自动挂简单单专席（无需手点认领）",
+                )
+            )
     except Exception:
         pass
 
@@ -116,7 +207,12 @@ async def create_ticket_for_employee(
     return _ticket_to_list_item(ticket)
 
 
-async def _ticket_detail_payload(db: AsyncSession, ticket: Ticket) -> dict:
+async def _ticket_detail_payload(
+    db: AsyncSession,
+    ticket: Ticket,
+    *,
+    include_assistant_draft: bool = False,
+) -> dict:
     from crud.checklist import ensure_checklist_for_ticket
     from model.user import User
 
@@ -132,12 +228,13 @@ async def _ticket_detail_payload(db: AsyncSession, ticket: Ticket) -> dict:
         await db.execute(select(User).where(User.id == ticket.user_id))
     ).scalar_one_or_none()
     assistant_draft = None
-    try:
-        from crud.automation import get_ticket_draft
+    if include_assistant_draft:
+        try:
+            from crud.automation import get_ticket_draft
 
-        assistant_draft = await get_ticket_draft(db, ticket.id)
-    except Exception:
-        assistant_draft = None
+            assistant_draft = await get_ticket_draft(db, ticket.id)
+        except Exception:
+            assistant_draft = None
 
     return {
         "id": ticket.id,
@@ -146,6 +243,7 @@ async def _ticket_detail_payload(db: AsyncSession, ticket: Ticket) -> dict:
         "description": ticket.description,
         "status": ticket.status,
         "priority": ticket.priority,
+        "escalate": int(getattr(ticket, "escalate", 0) or 0),
         "user_id": ticket.user_id,
         "creator_username": creator.username if creator else None,
         "creator_employee_no": creator.employee_no if creator else None,
@@ -169,7 +267,7 @@ async def get_ticket_detail_for_employee(
     ticket = (await db.execute(stmt)).scalar_one_or_none()
     if not ticket:
         return None
-    return await _ticket_detail_payload(db, ticket)
+    return await _ticket_detail_payload(db, ticket, include_assistant_draft=False)
 
 
 async def get_ticket_detail_for_support(
@@ -182,7 +280,7 @@ async def get_ticket_detail_for_support(
     ticket = (await db.execute(stmt)).scalar_one_or_none()
     if not ticket:
         return None
-    return await _ticket_detail_payload(db, ticket)
+    return await _ticket_detail_payload(db, ticket, include_assistant_draft=True)
 
 
 async def add_reply_for_support(
@@ -192,12 +290,13 @@ async def add_reply_for_support(
     support_id: int,
     content: str,
 ) -> dict | None:
-    """客服回复：插 reply 事件，不改工单状态。"""
+    """客服回复：插 reply；processing/need_manual → waiting_feedback。"""
     stmt = select(Ticket).where(Ticket.id == ticket_id)
     ticket = (await db.execute(stmt)).scalar_one_or_none()
     if not ticket:
         return None
 
+    now = datetime.now()
     db.add(
         TicketEvent(
             ticket_id=ticket_id,
@@ -206,9 +305,165 @@ async def add_reply_for_support(
             detail=content,
         )
     )
-    ticket.updated_at = datetime.now()
+    if ticket.status in {"processing", "need_manual"}:
+        from_status = ticket.status
+        ticket.status = "waiting_feedback"
+        if from_status == "need_manual":
+            ticket.escalate = 0
+        db.add(
+            TicketEvent(
+                ticket_id=ticket_id,
+                actor_id=support_id,
+                event_type="status",
+                detail=f"{from_status} 到 waiting_feedback（已回复，等员工反馈）",
+            )
+        )
+    ticket.updated_at = now
     await db.flush()
     return await get_ticket_detail_for_support(db, ticket_id=ticket_id)
+
+
+async def one_click_execute_simple_ticket(
+    db: AsyncSession,
+    *,
+    ticket_id: int,
+    support_id: int,
+) -> tuple[str, dict | None]:
+    """简单单专席一键执行：采纳草稿并发送 → waiting_feedback。
+    高危语义 / 待确认高危动作一律拒绝（最后确认仍走人审）。"""
+    import json
+
+    from crud.automation import get_ticket_draft
+    from crud.ticket_action import count_pending_actions
+    from model.automation import TicketAssistantDraft
+    from automation.reply_gen import looks_high_risk
+
+    stmt = select(Ticket).where(Ticket.id == ticket_id)
+    ticket = (await db.execute(stmt)).scalar_one_or_none()
+    if ticket is None:
+        return "not_found", None
+    if ticket.status not in {"processing", "need_manual"}:
+        return "bad_state", None
+
+    pending_n = await count_pending_actions(db, ticket_id)
+    if pending_n > 0:
+        return "blocked_pending_action", None
+
+    blob = f"{ticket.title}\n{ticket.description}"
+    draft = await get_ticket_draft(db, ticket_id)
+    content = ((draft or {}).get("content") or "").strip()
+    meta = (draft or {}).get("meta") or {}
+    if meta.get("high_risk_hint") or looks_high_risk(blob) or looks_high_risk(content):
+        return "high_risk", None
+    if not content:
+        return "no_draft", None
+
+    now = datetime.now()
+    # 执行权落到当前点击的客服（专席本人或代班），便于审计
+    if ticket.assignee_id is None:
+        ticket.assignee_id = int(support_id)
+
+    db.add(
+        TicketEvent(
+            ticket_id=ticket_id,
+            actor_id=support_id,
+            event_type="draft_adopt",
+            detail="简单单专席一键执行：已采纳草稿",
+        )
+    )
+    db.add(
+        TicketEvent(
+            ticket_id=ticket_id,
+            actor_id=support_id,
+            event_type="reply",
+            detail=content,
+        )
+    )
+    from_status = ticket.status
+    ticket.status = "waiting_feedback"
+    ticket.escalate = 0
+    ticket.updated_at = now
+    db.add(
+        TicketEvent(
+            ticket_id=ticket_id,
+            actor_id=support_id,
+            event_type="one_click_execute",
+            detail=f"{from_status} 到 waiting_feedback（一键执行发送，非高危）",
+        )
+    )
+
+    row = await db.get(TicketAssistantDraft, int(ticket_id))
+    if row is not None:
+        m = {}
+        if row.meta_json:
+            try:
+                m = json.loads(row.meta_json) or {}
+            except json.JSONDecodeError:
+                m = {}
+        m["awaiting_adopt"] = False
+        m["one_click_executed"] = True
+        m["adopted_by"] = int(support_id)
+        m["adopted_at"] = now.isoformat(timespec="seconds")
+        row.meta_json = json.dumps(m, ensure_ascii=False)
+        row.updated_at = now
+
+    await db.flush()
+    detail = await get_ticket_detail_for_support(db, ticket_id=ticket_id)
+    return "ok", detail
+
+
+async def adopt_assistant_draft_for_support(
+    db: AsyncSession,
+    *,
+    ticket_id: int,
+    support_id: int,
+) -> tuple[str, dict | None]:
+    """记录一键采纳事件（大盘用）；返回草稿内容给前端填入。"""
+    stmt = select(Ticket).where(Ticket.id == ticket_id)
+    ticket = (await db.execute(stmt)).scalar_one_or_none()
+    if ticket is None:
+        return "not_found", None
+
+    from crud.automation import get_ticket_draft
+
+    draft = await get_ticket_draft(db, ticket_id)
+    content = (draft or {}).get("content") if draft else None
+    if not content or not str(content).strip():
+        return "no_draft", None
+
+    db.add(
+        TicketEvent(
+            ticket_id=ticket_id,
+            actor_id=support_id,
+            event_type="draft_adopt",
+            detail="客服一键采纳助手草稿（尚未发送）",
+        )
+    )
+    # 清 awaiting 标记：改 meta
+    try:
+        from model.automation import TicketAssistantDraft
+        import json
+
+        row = await db.get(TicketAssistantDraft, int(ticket_id))
+        if row is not None:
+            meta = {}
+            if row.meta_json:
+                try:
+                    meta = json.loads(row.meta_json)
+                except json.JSONDecodeError:
+                    meta = {}
+            meta["awaiting_adopt"] = False
+            meta["adopted_at"] = datetime.now().isoformat(timespec="seconds")
+            meta["adopted_by"] = int(support_id)
+            row.meta_json = json.dumps(meta, ensure_ascii=False)
+            row.updated_at = datetime.now()
+    except Exception:
+        pass
+
+    ticket.updated_at = datetime.now()
+    await db.flush()
+    detail = await get_ticket_detail_for_support(db, ticket_id=ticket_id)
+    return "ok", {"content": str(content).strip(), "detail": detail}
 
 
 async def add_comment_for_employee(
@@ -218,27 +473,70 @@ async def add_comment_for_employee(
     user_id: int,
     detail: str,
 ) -> dict | None:
-    """给自己的工单追加一条 comment 事件；不改工单状态。别人的单返回 None。"""
+    """给自己的工单追加 comment；waiting_feedback 下捕获「好了/还不行」意图。"""
     stmt = select(Ticket).where(Ticket.id == ticket_id, Ticket.user_id == user_id)
     ticket = (await db.execute(stmt)).scalar_one_or_none()
     if not ticket:
         return None
 
+    text = (detail or "").strip()
     db.add(
         TicketEvent(
             ticket_id=ticket_id,
             actor_id=user_id,
             event_type="comment",
-            detail=detail,
+            detail=text,
         )
     )
-    ticket.updated_at = datetime.now()
+    now = datetime.now()
+    if ticket.status == "waiting_feedback":
+        intent = _feedback_intent(text)
+        if intent == "resolved":
+            ticket.status = "resolved"
+            ticket.escalate = 0
+            db.add(
+                TicketEvent(
+                    ticket_id=ticket_id,
+                    actor_id=user_id,
+                    event_type="status",
+                    detail="waiting_feedback 到 resolved（员工反馈已解决）",
+                )
+            )
+        elif intent == "escalate":
+            ticket.status = "need_manual"
+            ticket.escalate = 1
+            db.add(
+                TicketEvent(
+                    ticket_id=ticket_id,
+                    actor_id=user_id,
+                    event_type="status",
+                    detail="waiting_feedback 到 need_manual（员工反馈仍未解决，已升级）",
+                )
+            )
+    ticket.updated_at = now
     await db.flush()
     return await get_ticket_detail_for_employee(
         db,
         ticket_id=ticket_id,
         user_id=user_id,
     )
+
+
+def _feedback_intent(text: str) -> str | None:
+    """粗粒度意图：好了 → resolved；还不行 → escalate。"""
+    import re
+
+    t = (text or "").strip().lower()
+    if not t:
+        return None
+    if re.search(
+        r"(还是不行|还不行|没好|未解决|仍然|依旧|不行|没解决|更糟)",
+        t,
+    ):
+        return "escalate"
+    if re.search(r"(好了|已解决|可以了|搞定|没问题了|ok了|谢谢.*好)", t):
+        return "resolved"
+    return None
 
 
 async def close_ticket_for_employee(
@@ -313,9 +611,13 @@ async def claim_ticket_for_support(
     return "ok", _ticket_to_list_item(ticket)
 
 
-# 客服普通改状态允许的边（认领走 /claim；高风险走 /actions）
+# 客服普通改状态允许的边（认领走 /claim；高风险走 /actions；
+# waiting_feedback / auto_resolved / need_manual 主要由回复与自动化写入）
 SUPPORT_STATUS_EDGES: dict[str, set[str]] = {
-    "processing": {"resolved"},
+    "processing": {"resolved", "waiting_feedback"},
+    "waiting_feedback": {"resolved", "need_manual", "processing"},
+    "need_manual": {"processing", "resolved"},
+    "auto_resolved": {"closed"},
     "resolved": {"closed"},
 }
 
@@ -349,18 +651,26 @@ async def change_ticket_status_for_support(
         await ensure_checklist_for_ticket(db, ticket)
         if not await checklist_all_done(db, ticket_id, ticket.category):
             return "blocked_checklist", None
+        if from_status not in {"processing", "waiting_feedback", "need_manual"}:
+            return "bad_edge", None
         result = await db.execute(
             update(Ticket)
-            .where(Ticket.id == ticket_id, Ticket.status == "processing")
-            .values(status="resolved", updated_at=now)
+            .where(Ticket.id == ticket_id, Ticket.status == from_status)
+            .values(status="resolved", escalate=0, updated_at=now)
         )
         if result.rowcount != 1:
             return "bad_edge", None
     else:
+        values: dict = {"status": to_status, "updated_at": now}
+        # 客服从 need_manual 拉回处理中时清升级标；标 need_manual 时置 1
+        if to_status == "need_manual":
+            values["escalate"] = 1
+        elif to_status == "processing" and from_status == "need_manual":
+            values["escalate"] = 0
         result = await db.execute(
             update(Ticket)
             .where(Ticket.id == ticket_id, Ticket.status == from_status)
-            .values(status=to_status, updated_at=now)
+            .values(**values)
         )
         if result.rowcount != 1:
             return "bad_edge", None
@@ -378,25 +688,33 @@ async def change_ticket_status_for_support(
     return "ok", _ticket_to_list_item(ticket)
 
 
+_EMPLOYEE_DONE_STATUSES = frozenset({"resolved", "auto_resolved", "waiting_feedback"})
+
+
 async def employee_confirm_resolved(
     db: AsyncSession,
     *,
     ticket_id: int,
     user_id: int,
 ) -> tuple[str, dict | None]:
-    """员工确认已解决：resolved → closed。"""
+    """员工确认已解决：resolved / auto_resolved / waiting_feedback → closed。"""
     stmt = select(Ticket).where(Ticket.id == ticket_id, Ticket.user_id == user_id)
     ticket = (await db.execute(stmt)).scalar_one_or_none()
     if ticket is None:
         return "not_found", None
-    if ticket.status != "resolved":
+    if ticket.status not in _EMPLOYEE_DONE_STATUSES:
         return "bad_state", None
 
+    from_status = ticket.status
     now = datetime.now()
     result = await db.execute(
         update(Ticket)
-        .where(Ticket.id == ticket_id, Ticket.status == "resolved", Ticket.user_id == user_id)
-        .values(status="closed", updated_at=now)
+        .where(
+            Ticket.id == ticket_id,
+            Ticket.status == from_status,
+            Ticket.user_id == user_id,
+        )
+        .values(status="closed", escalate=0, updated_at=now)
     )
     if result.rowcount != 1:
         return "bad_state", None
@@ -406,7 +724,7 @@ async def employee_confirm_resolved(
             ticket_id=ticket_id,
             actor_id=user_id,
             event_type="employee_confirm",
-            detail="员工确认问题已解决，工单关闭",
+            detail=f"员工确认问题已解决，工单关闭（来自 {from_status}）",
         )
     )
     await db.flush()
@@ -423,7 +741,7 @@ async def employee_reopen_unresolved(
     user_id: int,
     reason: str,
 ) -> tuple[str, dict | None]:
-    """员工仍未解决：resolved → processing，写 reopen 事件。"""
+    """员工仍未解决：resolved→processing；auto_resolved/waiting_feedback→need_manual+escalate。"""
     reason = (reason or "").strip()
     if not reason:
         return "bad_reason", None
@@ -432,14 +750,26 @@ async def employee_reopen_unresolved(
     ticket = (await db.execute(stmt)).scalar_one_or_none()
     if ticket is None:
         return "not_found", None
-    if ticket.status != "resolved":
+    if ticket.status not in _EMPLOYEE_DONE_STATUSES:
         return "bad_state", None
 
+    from_status = ticket.status
+    # 夜班自动结案 / 等反馈：升级人工；普通 resolved 仍回处理中（兼容旧行为）
+    if from_status in {"auto_resolved", "waiting_feedback"}:
+        to_status = "need_manual"
+        escalate = 1
+    else:
+        to_status = "processing"
+        escalate = 0
     now = datetime.now()
     result = await db.execute(
         update(Ticket)
-        .where(Ticket.id == ticket_id, Ticket.status == "resolved", Ticket.user_id == user_id)
-        .values(status="processing", updated_at=now)
+        .where(
+            Ticket.id == ticket_id,
+            Ticket.status == from_status,
+            Ticket.user_id == user_id,
+        )
+        .values(status=to_status, escalate=escalate, updated_at=now)
     )
     if result.rowcount != 1:
         return "bad_state", None
@@ -449,7 +779,7 @@ async def employee_reopen_unresolved(
             ticket_id=ticket_id,
             actor_id=user_id,
             event_type="employee_reopen",
-            detail=f"员工反馈仍未解决：{reason}",
+            detail=f"员工反馈仍未解决：{reason}（{from_status}→{to_status}）",
         )
     )
     await db.flush()

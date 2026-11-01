@@ -6,6 +6,7 @@ from crud.checklist import set_checklist_item
 from crud.ticket import (
     add_comment_for_employee,
     add_reply_for_support,
+    adopt_assistant_draft_for_support,
     change_ticket_status_for_support,
     claim_ticket_for_support,
     close_ticket_for_employee,
@@ -16,6 +17,7 @@ from crud.ticket import (
     get_ticket_detail_for_support,
     list_tickets_for_employee,
     list_tickets_for_support,
+    one_click_execute_simple_ticket,
 )
 from crud.ticket_action import (
     confirm_action_for_support,
@@ -43,8 +45,18 @@ from utils.response import success_response
 router = APIRouter(prefix="/api/tickets", tags=["ticket"])
 
 CATEGORIES = {"account", "device", "network", "permission"}
-STATUSES = {"pending", "processing", "pending_confirm", "resolved", "closed"}
-SCOPES = {"unclaimed", "mine"}
+STATUSES = {
+    "pending",
+    "processing",
+    "pending_confirm",
+    "waiting_feedback",
+    "auto_resolved",
+    "need_manual",
+    "resolved",
+    "closed",
+}
+SCOPES = {"unclaimed", "mine", "simple_desk"}
+LANES = {"rag_ready", "need_review", "tracking"}
 
 
 def _require_employee(user: User) -> None:
@@ -62,6 +74,7 @@ async def list_tickets(
     status: str | None = Query(default=None),
     category: str | None = Query(default=None),
     scope: str | None = Query(default=None),
+    lane: str | None = Query(default=None),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -71,6 +84,8 @@ async def list_tickets(
         raise HTTPException(status_code=400, detail="类别不合法")
     if scope is not None and scope not in SCOPES:
         raise HTTPException(status_code=400, detail="筛选不合法")
+    if lane is not None and lane not in LANES:
+        raise HTTPException(status_code=400, detail="专席分栏不合法")
 
     if user.role == "employee":
         rows = await list_tickets_for_employee(
@@ -85,6 +100,7 @@ async def list_tickets(
             support_id=user.id,
             scope=scope,
             status=status,
+            lane=lane,
         )
     else:
         raise HTTPException(status_code=403, detail="无权查看工单")
@@ -122,6 +138,8 @@ async def create_ticket(
     msg, high_risk = create_success_message_for_user(
         title=body.title, description=body.description
     )
+    if not high_risk:
+        msg = "创建成功。非高危单已自动分流至简单单专席处理。"
     data = TicketListItem.model_validate(row).model_dump()
     # 前端要用：高危时换警告提示，并引导去详情看说明
     data["high_risk"] = high_risk
@@ -220,9 +238,71 @@ async def claim_ticket(
     if code == "not_claimable":
         raise HTTPException(status_code=400, detail="该工单不可认领或已被认领")
 
+    # 白天副驾：认领后若无草稿，后台触发起草（不阻塞认领响应）
+    try:
+        from automation.copilot import schedule_draft_after_claim
+
+        schedule_draft_after_claim(int(ticket_id), actor_id=int(user.id))
+    except Exception:
+        pass
+
     return success_response(
-        message="认领成功",
+        message="认领成功，正在生成回复草稿",
         data=TicketListItem.model_validate(row).model_dump(),
+    )
+
+
+@router.post("/{ticket_id}/adopt-draft")
+async def adopt_ticket_draft(
+    ticket_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """一键采纳：记 draft_adopt，返回草稿正文（前端填入回复框）。"""
+    _require_support(user)
+    code, payload = await adopt_assistant_draft_for_support(
+        db, ticket_id=ticket_id, support_id=user.id
+    )
+    if code == "not_found":
+        raise HTTPException(status_code=404, detail="工单不存在")
+    if code == "no_draft":
+        raise HTTPException(status_code=400, detail="暂无助手草稿可采纳")
+    return success_response(
+        message="已采纳草稿，请核对后发送",
+        data={
+            "content": payload["content"],
+            "ticket": TicketDetailOut.model_validate(payload["detail"]).model_dump(),
+        },
+    )
+
+
+@router.post("/{ticket_id}/one-click-execute")
+async def one_click_execute(
+    ticket_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """简单单专席一键执行：采纳草稿并发送。高危 / 待确认动作拒绝。"""
+    _require_support(user)
+    code, row = await one_click_execute_simple_ticket(
+        db, ticket_id=ticket_id, support_id=user.id
+    )
+    if code == "not_found":
+        raise HTTPException(status_code=404, detail="工单不存在")
+    if code == "no_draft":
+        raise HTTPException(status_code=400, detail="暂无草稿，无法一键执行")
+    if code == "high_risk":
+        raise HTTPException(
+            status_code=400,
+            detail="高危单不能一键执行，请走提出与人工确认",
+        )
+    if code == "blocked_pending_action":
+        raise HTTPException(status_code=400, detail="存在待确认高危动作，不能一键执行")
+    if code == "bad_state":
+        raise HTTPException(status_code=400, detail="当前状态不允许一键执行")
+    return success_response(
+        message="已一键执行：草稿已发送，工单进入等反馈",
+        data=TicketDetailOut.model_validate(row).model_dump(),
     )
 
 

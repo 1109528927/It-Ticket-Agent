@@ -19,6 +19,12 @@ class TicketListItem(BaseModel):
     category: str
     status: str
     priority: str
+    escalate: int = 0
+    has_draft: bool = False
+    awaiting_adopt: bool = False
+    high_risk_hint: bool = False
+    rag_ready: bool = False
+    draft_confidence: Optional[float] = None
     updated_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
@@ -80,6 +86,17 @@ class ChecklistItemOut(BaseModel):
     updated_at: Optional[datetime] = None
 
 
+class AssistantDraftOut(BaseModel):
+    """处理页采用的库内回复草稿（客服详情才带；员工详情为 null）。"""
+
+    ticket_id: int
+    draft_type: str
+    content: str
+    meta: dict[str, Any] = Field(default_factory=dict)
+    source: str
+    updated_at: Optional[str] = None
+
+
 class TicketDetailOut(BaseModel):
     id: int
     title: str
@@ -87,6 +104,7 @@ class TicketDetailOut(BaseModel):
     description: str
     status: str
     priority: str
+    escalate: int = 0
     user_id: Optional[int] = None
     creator_username: Optional[str] = None
     creator_employee_no: Optional[str] = None
@@ -95,6 +113,7 @@ class TicketDetailOut(BaseModel):
     events: list[TicketEventOut] = Field(default_factory=list)
     actions: list[TicketActionOut] = Field(default_factory=list)
     checklist: list[ChecklistItemOut] = Field(default_factory=list)
+    assistant_draft: Optional[AssistantDraftOut] = None
 
     model_config = {"from_attributes": True}
 
@@ -129,13 +148,26 @@ class TicketCommentIn(BaseModel):
         return v
 
 
+# 原有五态 + 风险闭环三态（夜班自动结案 / 等反馈 / 需人工）
 TicketStatus = Literal[
     "pending",
     "processing",
     "pending_confirm",
+    "waiting_feedback",
+    "auto_resolved",
+    "need_manual",
     "resolved",
     "closed",
 ]
+
+
+class DashboardStatsOut(BaseModel):
+    """支撑大盘：纯 SQL 聚合，字段名固定给仪表盘卡片用。"""
+
+    today_created: int = 0
+    night_auto_resolved: int = 0
+    draft_adopt_rate: float = 0.0
+    overdue_unhandled: int = 0
 
 
 class TicketStatusIn(BaseModel):

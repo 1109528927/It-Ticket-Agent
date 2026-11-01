@@ -24,6 +24,9 @@ const statusLabel = {
   pending: '待处理',
   processing: '处理中',
   pending_confirm: '待确认',
+  waiting_feedback: '等你反馈',
+  auto_resolved: '系统已自动结案',
+  need_manual: '已升级人工',
   resolved: '已解决',
   closed: '已关闭'
 }

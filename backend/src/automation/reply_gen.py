@@ -103,11 +103,16 @@ def generate_reply_draft_for_ticket(
         "根据工单与知识库检索结果，写一版「客服可发给员工」的处理说明草稿。"
         "要求：简洁；步骤可执行；使用了检索则文末写「依据：[序号] source=…」；"
         "禁止声称已改密/已改权限；不要编造工单号。"
+        "必须只输出一个 JSON 对象，不要其它说明，格式："
+        '{"reply_draft":"回复正文","confidence":0.0到1.0的小数}。'
+        "confidence 表示这份草稿可直接发给员工的把握："
+        "检索充分、步骤清晰可给 0.85 以上；信息不足或含糊给 0.5 以下。"
     )
     human = (
         f"工单#{ticket_id} 类别={category} 状态={status}\n"
         f"标题：{title}\n描述：{description}\n\n"
-        f"{risk_line}\n\n知识库检索：\n{kb_text}\n\n请直接输出回复草稿正文。"
+        f"{risk_line}\n\n知识库检索：\n{kb_text}\n\n"
+        "请只输出 JSON。"
     )
 
     resp = call_with_retry(
@@ -116,7 +121,14 @@ def generate_reply_draft_for_ticket(
         retries=1,
         label="automation.draft_llm",
     )
-    content = (getattr(resp, "content", None) or str(resp)).strip()
+    raw = (getattr(resp, "content", None) or str(resp)).strip()
+    if not raw:
+        raise ValueError("empty_llm")
+
+    from automation.confidence import parse_draft_and_confidence
+
+    parsed = parse_draft_and_confidence(raw)
+    content = (parsed.get("content") or "").strip()
     if not content:
         raise ValueError("empty_llm")
 
@@ -125,5 +137,8 @@ def generate_reply_draft_for_ticket(
         "category": category,
         "high_risk_hint": risk,
         "kb_preview": (kb_text or "")[:400],
+        "confidence": float(parsed.get("confidence") or 0.0),
+        "parse_ok": bool(parsed.get("parse_ok")),
+        "parse_error": parsed.get("error"),
     }
     return {"content": content, "meta": meta}

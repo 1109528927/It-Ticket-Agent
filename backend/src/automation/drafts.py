@@ -63,13 +63,44 @@ def upsert_reply_draft(
         db.commit()
 
 
+def claim_pending_to_automation(
+    *,
+    ticket_id: int,
+    actor_id: int,
+    detail: str = "简单单专席认领：非高危积压，已挂专席账号并进入处理中（可一键执行发送）",
+) -> bool:
+    """pending 且无 assignee → processing + 自动化账号。已认领则 False（幂等）。"""
+    with SyncSessionLocal() as db:
+        ticket = db.get(Ticket, int(ticket_id))
+        if ticket is None:
+            raise ValueError("ticket_not_found")
+        if ticket.status != "pending" or ticket.assignee_id is not None:
+            return False
+        now = datetime.now()
+        ticket.assignee_id = int(actor_id)
+        ticket.status = "processing"
+        ticket.updated_at = now
+        db.add(
+            TicketEvent(
+                ticket_id=int(ticket_id),
+                actor_id=int(actor_id),
+                event_type="claim",
+                detail=(detail or "自动化认领")[:500],
+            )
+        )
+        db.commit()
+        return True
+
+
 def send_auto_reply(
     *,
     ticket_id: int,
     content: str,
     actor_id: int,
+    resolve: bool = False,
 ) -> None:
-    """简单单自动发送：写 reply + auto_reply 审计；不改密、不确认高危、不结案。"""
+    """简单单自动发送：写 reply + auto_reply；resolve=True 时置 auto_resolved。
+    不改密、不确认高危。"""
     content = (content or "").strip()
     if not content:
         raise ValueError("empty_reply")
@@ -78,11 +109,23 @@ def send_auto_reply(
         ticket = db.get(Ticket, int(ticket_id))
         if ticket is None:
             raise ValueError("ticket_not_found")
+        # 幂等：已自动结案或已关闭不再发
+        if ticket.status in {"auto_resolved", "resolved", "closed"}:
+            return
         now = datetime.now()
-        # 未认领的 pending：挂到自动化账号并进入处理中，方便白班看清「夜里已回过」
-        if ticket.status == "pending" and ticket.assignee_id is None:
+        if ticket.assignee_id is None:
             ticket.assignee_id = int(actor_id)
-            ticket.status = "processing"
+        if resolve:
+            ticket.status = "auto_resolved"
+            ticket.escalate = 0
+            audit = "自动化：高置信非高危，已自动发送并结案（auto_resolved）"
+        else:
+            if ticket.status == "pending":
+                ticket.status = "processing"
+            # 已发回复但未高置信结案：进入等反馈
+            if ticket.status in {"processing", "need_manual", "pending"}:
+                ticket.status = "waiting_feedback"
+            audit = "自动化：判定为简单单，已自动发送回复（非高危；等反馈）"
         ticket.updated_at = now
         db.add(
             TicketEvent(
@@ -97,7 +140,30 @@ def send_auto_reply(
                 ticket_id=int(ticket_id),
                 actor_id=int(actor_id),
                 event_type="auto_reply",
-                detail="自动化：判定为简单单，已自动发送回复（非高危；未结案）",
+                detail=audit,
+            )
+        )
+        if resolve:
+            db.add(
+                TicketEvent(
+                    ticket_id=int(ticket_id),
+                    actor_id=int(actor_id),
+                    event_type="status",
+                    detail="自动化：processing/pending → auto_resolved",
+                )
+            )
+        db.commit()
+
+
+def mark_draft_awaiting_adopt(*, ticket_id: int, actor_id: int) -> None:
+    """标记草稿待客服采用（事件，供列表/大盘）。"""
+    with SyncSessionLocal() as db:
+        db.add(
+            TicketEvent(
+                ticket_id=int(ticket_id),
+                actor_id=int(actor_id),
+                event_type="draft_ready",
+                detail="非高危草稿已就绪，待客服一键执行发送",
             )
         )
         db.commit()

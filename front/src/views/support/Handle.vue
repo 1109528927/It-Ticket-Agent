@@ -5,12 +5,14 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   addTicketReply,
   changeTicketStatus,
+  oneClickExecuteTicket,
   confirmTicketAction,
   getTicketDetail,
   proposeTicketAction,
   rejectTicketAction,
   toggleChecklistItem
 } from '@/api/ticket'
+import { retriageTicket } from '@/api/automation'
 import { getErrorMessage } from '@/utils/request'
 import { readReplyDraft } from '@/utils/assistantDraft'
 import SupportAside from '@/components/SupportAside.vue'
@@ -58,6 +60,56 @@ const confirmForm = reactive({
   new_password: '',
   new_password2: ''
 })
+/** 确认成功后：需要告知员工的信息（本页展示一次，再填入回复） */
+const notifyVisible = ref(false)
+const notifyTitle = ref('')
+const notifyLines = ref([])
+const notifyReplyText = ref('')
+const notifyCopyText = ref('')
+const draftBusy = ref(false)
+const oneClickBusy = ref(false)
+
+const clearNotify = () => {
+  notifyTitle.value = ''
+  notifyLines.value = []
+  notifyReplyText.value = ''
+  notifyCopyText.value = ''
+}
+
+const openEmployeeNotify = ({ title, lines, replyText, copyText = '' }) => {
+  notifyTitle.value = title || '请告知员工'
+  notifyLines.value = Array.isArray(lines) ? lines.filter(Boolean) : []
+  notifyReplyText.value = (replyText || '').trim()
+  notifyCopyText.value = (copyText || '').trim()
+  notifyVisible.value = true
+}
+
+const hasAssistantDraft = computed(() => {
+  const db = (detail.value?.assistant_draft?.content || '').trim()
+  if (db) return true
+  return !!readReplyDraft(route.params.id)
+})
+
+const isHighRiskHint = computed(() => !!detail.value?.assistant_draft?.meta?.high_risk_hint)
+const showOneClick = computed(() => hasAssistantDraft.value && !isHighRiskHint.value)
+const riskPanelNames = ref([])
+
+const syncRiskPanel = () => {
+  const pending = (detail.value?.actions || []).some((a) => a.status === 'pending')
+  riskPanelNames.value = isHighRiskHint.value || pending ? ['risk'] : []
+}
+
+const draftMetaLine = computed(() => {
+  const d = detail.value?.assistant_draft
+  if (!d) return ''
+  const parts = []
+  if (d.source) parts.push(`来源 ${d.source}`)
+  const conf = d.meta?.confidence
+  if (conf != null && conf !== '') parts.push(`置信度 ${Number(conf).toFixed(2)}`)
+  if (d.meta?.awaiting_adopt) parts.push('待采用')
+  if (d.meta?.high_risk_hint) parts.push('高危仅供参考')
+  return parts.join(' · ')
+})
 
 const categoryLabel = {
   account: '账号',
@@ -69,6 +121,9 @@ const statusLabel = {
   pending: '待处理',
   processing: '处理中',
   pending_confirm: '待确认',
+  waiting_feedback: '等反馈',
+  auto_resolved: '夜间自动结案',
+  need_manual: '需人工',
   resolved: '已解决',
   closed: '已关闭'
 }
@@ -92,11 +147,14 @@ const eventLabel = {
   employee_confirm: '员工确认解决',
   employee_reopen: '员工反馈未解决',
   agent_draft: '助手草稿',
+  draft_ready: '草稿待采用',
+  draft_adopt: '采纳草稿',
   auto_triage: '自动初审',
   risk_notice: '高风险说明（已告知员工）',
   auto_reply: '系统自动回复',
   sla_unclaimed: 'SLA未认领',
-  sla_confirm_timeout: 'SLA待确认超时'
+  sla_confirm_timeout: 'SLA待确认超时',
+  sla_feedback_nudge: '催办等反馈'
 }
 const actionTypeLabel = {
   reset_password: '重置密码',
@@ -141,6 +199,17 @@ const execSummary = (row) => {
   return er.message || row.execution_status || '—'
 }
 
+const prefillDraftIfNeeded = () => {
+  const d = detail.value?.assistant_draft
+  const text = (d?.content || '').trim()
+  if (!text) return
+  // 非高危：打开处理页即预填表单，不必再点「填入」
+  if (d?.meta?.high_risk_hint) return
+  if (!content.value.trim()) {
+    content.value = text
+  }
+}
+
 const load = async () => {
   loading.value = true
   try {
@@ -151,6 +220,8 @@ const load = async () => {
       return
     }
     detail.value = body.data
+    syncRiskPanel()
+    prefillDraftIfNeeded()
   } catch (e) {
     ElMessage.error(getErrorMessage(e, '加载失败'))
     if (e?.response?.status === 404) {
@@ -291,21 +362,101 @@ const insertHandoffToReply = () => {
   ElMessage.success('已插入回复开头')
 }
 
-const adoptDraftFromAssistant = () => {
-  const fromDb = detail.value?.assistant_draft?.content?.trim()
-  const fromSession = readReplyDraft(route.params.id)
-  const draft = fromDb || fromSession
-  if (!draft) {
-    ElMessage.warning(
-      '暂无助手草稿：可等建单初审/批跑写入，或在助手页生成后采用'
-    )
+const onOneClickExecute = async () => {
+  oneClickBusy.value = true
+  try {
+    const res = await oneClickExecuteTicket(route.params.id)
+    const body = res.data
+    if (body.code !== 200) {
+      ElMessage.error(body.message || '一键执行失败')
+      return
+    }
+    detail.value = body.data || detail.value
+    content.value = ''
+    ElMessage.success(body.message || '已一键执行并发送')
+  } catch (e) {
+    ElMessage.error(getErrorMessage(e, '一键执行失败（高危请走确认）'))
+  } finally {
+    oneClickBusy.value = false
+  }
+}
+
+const generateDraftHere = async () => {
+  draftBusy.value = true
+  try {
+    const res = await retriageTicket(route.params.id)
+    const body = res.data
+    if (body.code !== 200) {
+      ElMessage.error(body.message || '生成草稿失败')
+      return
+    }
+    await load()
+    const draft = (detail.value?.assistant_draft?.content || '').trim()
+    if (!draft) {
+      ElMessage.warning('初审已跑，但未写入草稿内容，请稍后重试或看助手页')
+      return
+    }
+    content.value = draft
+    ElMessage.success('已生成本页草稿并填入回复框，请核对后发送')
+  } catch (e) {
+    ElMessage.error(getErrorMessage(e, '生成草稿失败'))
+  } finally {
+    draftBusy.value = false
+  }
+}
+
+const fillNotifyIntoReply = () => {
+  const tip = notifyReplyText.value
+  if (!tip) {
+    ElMessage.warning('没有可填入的告知内容')
     return
   }
-  content.value = draft
-  const src = fromDb
-    ? `库内草稿（${detail.value?.assistant_draft?.source || 'auto'}）`
-    : '会话草稿'
-  ElMessage.success(`已采用${src}，请核对后发送`)
+  content.value = content.value ? `${content.value}\n\n${tip}` : tip
+  notifyVisible.value = false
+  clearNotify()
+  ElMessage.success('已填入告知员工的回复，请核对后发送')
+}
+
+const copyNotifySecret = async () => {
+  const text = notifyCopyText.value
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+    ElMessage.success('已复制关键信息（关闭弹窗后本页不再保留明文）')
+  } catch {
+    ElMessage.warning('复制失败，请手动选中')
+  }
+}
+
+const buildNotifyAfterConfirm = (row, { plainPassword = '' } = {}) => {
+  if (row.action_type === 'reset_password' && plainPassword) {
+    return {
+      title: '请告知员工临时密码（仅展示一次）',
+      lines: [
+        `临时密码：${plainPassword}`,
+        '库内执行结果不存明文。请填入回复发给员工，或复制后用其他安全渠道告知。'
+      ],
+      replyText:
+        `您的登录临时密码为：${plainPassword}\n` +
+        '请尽快登录，登录后立即修改为个人密码。旧会话已失效，请勿将密码发给他人或发到群里。',
+      copyText: plainPassword
+    }
+  }
+  if (row.action_type === 'change_permission') {
+    const group = row.payload?.group_name || '—'
+    return {
+      title: '请告知员工权限已变更',
+      lines: [
+        `权限组已设为：${group}`,
+        '请把结果回复给员工，避免员工不知道是否开通成功。'
+      ],
+      replyText:
+        `您申请的权限已开通，当前权限组为「${group}」。\n` +
+        '如仍无法访问对应资源，请补充系统名称与报错截图后回复本单。',
+      copyText: group
+    }
+  }
+  return null
 }
 
 const submitConfirm = async () => {
@@ -313,6 +464,7 @@ const submitConfirm = async () => {
   if (!row) return
 
   const payload = {}
+  let plainPassword = ''
   if (row.action_type === 'reset_password') {
     const p1 = confirmForm.new_password.trim()
     const p2 = confirmForm.new_password2.trim()
@@ -325,6 +477,7 @@ const submitConfirm = async () => {
       return
     }
     payload.new_password = p1
+    plainPassword = p1
   }
 
   actionBusyId.value = row.id
@@ -338,10 +491,19 @@ const submitConfirm = async () => {
     detail.value = body.data
     confirmVisible.value = false
     ElMessage.success(body.message || '已确认并执行')
+    const notice = buildNotifyAfterConfirm(row, { plainPassword })
     if (row.action_type === 'reset_password') {
-      const tip =
-        '临时密码已设置，请尽快登录并用临时密码登录后修改。旧会话已失效。'
-      content.value = content.value ? `${content.value}\n\n${tip}` : tip
+      confirmForm.new_password = ''
+      confirmForm.new_password2 = ''
+    }
+    if (notice) {
+      // 系统改完 ≠ 已通知员工：立刻预填回复框，客服核对后点「发送回复」
+      if (notice.replyText) {
+        content.value = content.value
+          ? `${content.value}\n\n${notice.replyText}`
+          : notice.replyText
+      }
+      openEmployeeNotify(notice)
     }
   } catch (e) {
     ElMessage.error(getErrorMessage(e, '确认失败'))
@@ -383,6 +545,7 @@ const onReject = async (row) => {
 onMounted(async () => {
   await load()
   if (route.hash === '#risk-actions') {
+    riskPanelNames.value = ['risk']
     await nextTick()
     document.getElementById('risk-actions')?.scrollIntoView({ behavior: 'smooth' })
   }
@@ -397,7 +560,11 @@ onMounted(async () => {
         <h2>处理工单</h2>
         <div class="head-actions">
           <el-button
-            v-if="detail?.status === 'processing'"
+            v-if="
+              detail?.status === 'processing' ||
+              detail?.status === 'waiting_feedback' ||
+              detail?.status === 'need_manual'
+            "
             type="success"
             :loading="resolving"
             @click="markResolved"
@@ -460,135 +627,167 @@ onMounted(async () => {
           </div>
         </template>
 
-        <h3 class="block-title">高风险动作（提出 → 待确认填表 → 已执行）</h3>
-        <div v-if="canPropose" class="propose-box">
-          <el-form label-width="96px" @submit.prevent>
-            <el-form-item label="动作类型">
-              <el-select v-model="proposeForm.action_type" style="width: 220px">
-                <el-option
-                  v-for="(label, value) in actionTypeLabel"
-                  :key="value"
-                  :label="label"
-                  :value="value"
-                />
-              </el-select>
-            </el-form-item>
-            <el-form-item v-if="proposeForm.action_type === 'reset_password'" label="目标工号">
-              <span class="readonly-no">
-                {{ detail.creator_employee_no || '—' }}
-                <span class="readonly-tip">（自动取本单提单人，无需手填）</span>
-              </span>
-            </el-form-item>
-            <el-form-item v-if="proposeForm.action_type === 'change_permission'" label="权限组">
-              <div class="group-pick">
-                <el-select
-                  v-model="groupSelect"
-                  clearable
-                  placeholder="请选择权限组"
-                  style="width: 320px"
-                  @change="syncGroupName"
-                >
-                  <el-option
-                    v-for="opt in permissionGroupOptions"
-                    :key="opt.value"
-                    :label="opt.label"
-                    :value="opt.value"
-                  />
-                </el-select>
-                <el-input
-                  v-if="groupSelect === PERMISSION_CUSTOM"
-                  v-model="groupCustom"
-                  maxlength="64"
-                  placeholder="输入组名，如 vpn_users"
-                  style="width: 320px; margin-top: 8px"
-                  @input="syncGroupName"
-                />
-              </div>
-            </el-form-item>
-            <el-form-item label="提出理由">
-              <el-input
-                v-model="proposeForm.reason"
-                type="textarea"
-                :rows="3"
-                maxlength="500"
-                show-word-limit
-                style="max-width: 520px"
-              />
-            </el-form-item>
-            <el-form-item>
-              <el-button type="warning" :loading="proposing" @click="submitPropose">
-                提出确认
-              </el-button>
-            </el-form-item>
-          </el-form>
-        </div>
-        <p v-else class="hint">工单不在处理中时不能提出新动作（待确认请先确认或拒绝）。</p>
-
-        <el-table :data="actions" empty-text="暂无高风险动作" id="risk-actions">
-          <el-table-column label="类型" width="120">
-            <template #default="{ row }">
-              {{ actionTypeLabel[row.action_type] || row.action_type }}
-            </template>
-          </el-table-column>
-          <el-table-column prop="reason" label="理由" min-width="140" />
-          <el-table-column label="参数摘要" min-width="120">
-            <template #default="{ row }">{{ payloadSummary(row) }}</template>
-          </el-table-column>
-          <el-table-column label="状态" width="90">
-            <template #default="{ row }">
-              {{ actionStatusLabel[row.status] || row.status }}
-            </template>
-          </el-table-column>
-          <el-table-column label="执行结果" min-width="180">
-            <template #default="{ row }">{{ execSummary(row) }}</template>
-          </el-table-column>
-          <el-table-column label="操作" width="160" fixed="right">
-            <template #default="{ row }">
-              <template v-if="row.status === 'pending'">
-                <el-button
-                  type="primary"
-                  link
-                  :loading="actionBusyId === row.id"
-                  @click="openConfirm(row)"
-                >
-                  确认执行
-                </el-button>
-                <el-button
-                  type="danger"
-                  link
-                  :loading="actionBusyId === row.id"
-                  @click="onReject(row)"
-                >
-                  拒绝
-                </el-button>
-              </template>
-              <span v-else class="muted">—</span>
-            </template>
-          </el-table-column>
-        </el-table>
-
         <h3 class="block-title">回复员工</h3>
+        <el-alert
+          v-if="!hasAssistantDraft"
+          type="warning"
+          :closable="true"
+          show-icon
+          class="draft-alert"
+          title="暂无助手草稿：可点「重新生成草稿」，或等初审/批跑写入。"
+        />
         <div class="reply-box">
-          <div class="reply-tools">
-            <el-button size="small" @click="adoptDraftFromAssistant">采用助手草稿</el-button>
+          <div v-if="hasAssistantDraft" class="draft-toolbar">
+            <span class="draft-hint">
+              {{
+                isHighRiskHint
+                  ? '高危单草稿仅供参考，请走下方提出确认；不要一键发送。'
+                  : '草稿已预填，可改后发送；高置信可直接一键执行，之后到「等反馈跟踪」跟进。'
+              }}
+            </span>
+            <span v-if="draftMetaLine" class="muted">{{ draftMetaLine }}</span>
           </div>
           <el-input
             v-model="content"
             type="textarea"
-            :rows="4"
+            :rows="8"
             maxlength="2000"
             show-word-limit
-            placeholder="写给员工的处理说明"
+            placeholder="草稿会预填到这里，核对后发送"
           />
-          <el-button
-            type="primary"
-            class="reply-btn"
-            :loading="submitting"
-            @click="submitReply"
-          >
-            发送回复
-          </el-button>
+          <div class="reply-actions">
+            <el-button
+              v-if="showOneClick"
+              type="success"
+              :loading="oneClickBusy"
+              @click="onOneClickExecute"
+            >
+              一键执行发送
+            </el-button>
+            <el-button plain :loading="draftBusy" @click="generateDraftHere">
+              重新生成草稿
+            </el-button>
+            <el-button type="primary" :loading="submitting" @click="submitReply">
+              发送回复
+            </el-button>
+          </div>
         </div>
+
+        <el-collapse v-model="riskPanelNames" class="risk-collapse">
+          <el-collapse-item name="risk">
+            <template #title>
+              <span class="block-title risk-collapse-title">
+                高风险动作（提出 / 确认）
+                <span v-if="isHighRiskHint" class="risk-badge">本单偏高危</span>
+              </span>
+            </template>
+            <div v-if="canPropose" class="propose-box">
+              <el-form label-width="96px" @submit.prevent>
+                <el-form-item label="动作类型">
+                  <el-select v-model="proposeForm.action_type" style="width: 220px">
+                    <el-option
+                      v-for="(label, value) in actionTypeLabel"
+                      :key="value"
+                      :label="label"
+                      :value="value"
+                    />
+                  </el-select>
+                </el-form-item>
+                <el-form-item v-if="proposeForm.action_type === 'reset_password'" label="目标工号">
+                  <span class="readonly-no">
+                    {{ detail.creator_employee_no || '—' }}
+                    <span class="readonly-tip">（自动取本单提单人，无需手填）</span>
+                  </span>
+                </el-form-item>
+                <el-form-item v-if="proposeForm.action_type === 'change_permission'" label="权限组">
+                  <div class="group-pick">
+                    <el-select
+                      v-model="groupSelect"
+                      clearable
+                      placeholder="请选择权限组"
+                      style="width: 320px"
+                      @change="syncGroupName"
+                    >
+                      <el-option
+                        v-for="opt in permissionGroupOptions"
+                        :key="opt.value"
+                        :label="opt.label"
+                        :value="opt.value"
+                      />
+                    </el-select>
+                    <el-input
+                      v-if="groupSelect === PERMISSION_CUSTOM"
+                      v-model="groupCustom"
+                      maxlength="64"
+                      placeholder="输入组名，如 vpn_users"
+                      style="width: 320px; margin-top: 8px"
+                      @input="syncGroupName"
+                    />
+                  </div>
+                </el-form-item>
+                <el-form-item label="提出理由">
+                  <el-input
+                    v-model="proposeForm.reason"
+                    type="textarea"
+                    :rows="3"
+                    maxlength="500"
+                    show-word-limit
+                    style="max-width: 520px"
+                  />
+                </el-form-item>
+                <el-form-item>
+                  <el-button type="warning" :loading="proposing" @click="submitPropose">
+                    提出确认
+                  </el-button>
+                </el-form-item>
+              </el-form>
+            </div>
+            <p v-else class="hint">工单不在处理中时不能提出新动作（待确认请先确认或拒绝）。</p>
+
+            <el-table :data="actions" empty-text="暂无高风险动作" id="risk-actions">
+              <el-table-column label="类型" width="120">
+                <template #default="{ row }">
+                  {{ actionTypeLabel[row.action_type] || row.action_type }}
+                </template>
+              </el-table-column>
+              <el-table-column prop="reason" label="理由" min-width="140" />
+              <el-table-column label="参数摘要" min-width="120">
+                <template #default="{ row }">{{ payloadSummary(row) }}</template>
+              </el-table-column>
+              <el-table-column label="状态" width="90">
+                <template #default="{ row }">
+                  {{ actionStatusLabel[row.status] || row.status }}
+                </template>
+              </el-table-column>
+              <el-table-column label="执行结果" min-width="180">
+                <template #default="{ row }">{{ execSummary(row) }}</template>
+              </el-table-column>
+              <el-table-column label="操作" width="160" fixed="right">
+                <template #default="{ row }">
+                  <template v-if="row.status === 'pending'">
+                    <el-button
+                      type="primary"
+                      link
+                      :loading="actionBusyId === row.id"
+                      @click="openConfirm(row)"
+                    >
+                      确认执行
+                    </el-button>
+                    <el-button
+                      type="danger"
+                      link
+                      :loading="actionBusyId === row.id"
+                      @click="onReject(row)"
+                    >
+                      拒绝
+                    </el-button>
+                  </template>
+                  <span v-else class="muted">—</span>
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-collapse-item>
+        </el-collapse>
 
         <h3 class="block-title">操作记录</h3>
         <el-timeline v-if="detail.events?.length">
@@ -632,7 +831,9 @@ onMounted(async () => {
                 maxlength="64"
               />
             </el-form-item>
-            <p class="dlg-hint">确认后旧登录会话立即失效；明文密码不会写入动作 payload。</p>
+            <p class="dlg-hint">
+              确认后旧登录会话立即失效；库内执行结果不存明文。成功后会弹窗展示一次临时密码，便于填入回复。
+            </p>
           </el-form>
           <p v-else class="dlg-hint">
             确认后将把本单提单人的业务权限组设为
@@ -648,6 +849,22 @@ onMounted(async () => {
           >
             确认并执行
           </el-button>
+        </template>
+      </el-dialog>
+
+      <el-dialog
+        v-model="notifyVisible"
+        :title="notifyTitle || '请告知员工'"
+        width="520px"
+        :close-on-click-modal="false"
+        @closed="clearNotify"
+      >
+        <p v-for="(line, idx) in notifyLines" :key="idx" class="dlg-hint">{{ line }}</p>
+        <p v-if="notifyCopyText" class="pwd-once">{{ notifyCopyText }}</p>
+        <template #footer>
+          <el-button v-if="notifyCopyText" @click="copyNotifySecret">复制关键信息</el-button>
+          <el-button type="primary" @click="fillNotifyIntoReply">填入回复发给员工</el-button>
+          <el-button @click="notifyVisible = false">关闭</el-button>
         </template>
       </el-dialog>
     </main>
@@ -678,6 +895,65 @@ onMounted(async () => {
 }
 .block-title {
   margin: 28px 0 16px;
+}
+.draft-alert {
+  margin-bottom: 12px;
+}
+.risk-collapse {
+  margin-top: 28px;
+  border: none;
+}
+.risk-collapse :deep(.el-collapse-item__header) {
+  height: auto;
+  line-height: 1.4;
+  padding: 8px 0;
+  border: none;
+}
+.risk-collapse :deep(.el-collapse-item__wrap) {
+  border: none;
+}
+.risk-collapse-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.risk-badge {
+  margin-left: 8px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #c45656;
+  background: #fef0f0;
+  border-radius: 4px;
+}
+.draft-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: #606266;
+}
+.draft-hint {
+  flex: 1;
+  min-width: 200px;
+}
+.reply-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.pwd-once {
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  word-break: break-all;
+  background: #f5f7fa;
+  border-radius: 6px;
 }
 .propose-box {
   margin-bottom: 16px;
@@ -736,9 +1012,6 @@ onMounted(async () => {
 }
 .reply-tools {
   margin-bottom: 8px;
-}
-.reply-btn {
-  margin-top: 12px;
 }
 .dlg-line {
   margin: 0 0 8px;

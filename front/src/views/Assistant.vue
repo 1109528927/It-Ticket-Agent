@@ -133,7 +133,7 @@ const saveLastAssistantAsDraft = () => {
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     if (messages[i].role === 'assistant' && messages[i].content?.trim()) {
       saveReplyDraft(ticketId.value, messages[i].content.trim())
-      ElMessage.success('已存为处理页草稿，可到该单处理页「采用助手草稿」')
+      ElMessage.success('已存为处理页草稿，打开该单即可预填，核对后一键发送或改后发送')
       return
     }
   }
@@ -254,7 +254,7 @@ const send = async () => {
           const tid = event.ticket_id ?? ticketId.value
           if (tid != null) {
             saveReplyDraft(tid, event.content)
-            ElMessage.success('回复草稿已就绪，可到处理页「采用助手草稿」')
+            ElMessage.success('回复草稿已就绪，打开处理页会预填，核对后发送即可')
           }
           return
         }

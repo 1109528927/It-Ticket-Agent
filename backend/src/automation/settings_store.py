@@ -34,6 +34,10 @@ def _defaults() -> dict[str, Any]:
         "sla_interval_minutes": max(5, SLA_INTERVAL_MINUTES),
         "skip_high_risk": False,
         "auto_send_simple_reply": False,
+        "enable_night_auto_resolve": False,
+        "night_confidence_threshold": 0.8,
+        "enable_feedback_sla": True,
+        "feedback_idle_days": 3,
         "backlog_categories": [],
         "last_backlog_run_at": None,
         "last_sla_run_at": None,
@@ -72,6 +76,16 @@ def _row_to_dict(row: AutomationConfig) -> dict[str, Any]:
         "auto_send_simple_reply": bool(
             getattr(row, "auto_send_simple_reply", False)
         ),
+        "enable_night_auto_resolve": bool(
+            getattr(row, "enable_night_auto_resolve", False)
+        ),
+        "night_confidence_threshold": float(
+            getattr(row, "night_confidence_threshold", 0.8) or 0.8
+        ),
+        "enable_feedback_sla": bool(getattr(row, "enable_feedback_sla", True)),
+        "feedback_idle_days": max(
+            1, int(getattr(row, "feedback_idle_days", 3) or 3)
+        ),
         "backlog_categories": _parse_categories(row.backlog_categories),
         "last_backlog_run_at": row.last_backlog_run_at,
         "last_sla_run_at": row.last_sla_run_at,
@@ -108,6 +122,10 @@ def ensure_config_row(db) -> AutomationConfig:
         sla_interval_minutes=d["sla_interval_minutes"],
         skip_high_risk=d["skip_high_risk"],
         auto_send_simple_reply=d["auto_send_simple_reply"],
+        enable_night_auto_resolve=d["enable_night_auto_resolve"],
+        night_confidence_threshold=d["night_confidence_threshold"],
+        enable_feedback_sla=d["enable_feedback_sla"],
+        feedback_idle_days=d["feedback_idle_days"],
         backlog_categories=None,
     )
     db.add(row)
@@ -159,6 +177,18 @@ def save_config_sync(payload: dict[str, Any]) -> dict[str, Any]:
         row.skip_high_risk = bool(payload.get("skip_high_risk", False))
         row.auto_send_simple_reply = bool(
             payload.get("auto_send_simple_reply", False)
+        )
+        row.enable_night_auto_resolve = bool(
+            payload.get("enable_night_auto_resolve", False)
+        )
+        try:
+            thr = float(payload.get("night_confidence_threshold", 0.8))
+        except (TypeError, ValueError):
+            thr = 0.8
+        row.night_confidence_threshold = max(0.0, min(1.0, thr))
+        row.enable_feedback_sla = bool(payload.get("enable_feedback_sla", True))
+        row.feedback_idle_days = max(
+            1, min(30, int(payload.get("feedback_idle_days") or 3))
         )
         row.backlog_categories = cats_json
         row.updated_at = datetime.now()

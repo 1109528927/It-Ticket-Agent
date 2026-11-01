@@ -46,6 +46,10 @@ class AutomationConfigOut(BaseModel):
     sla_interval_minutes: int = 15
     skip_high_risk: bool = False
     auto_send_simple_reply: bool = False
+    enable_night_auto_resolve: bool = False
+    night_confidence_threshold: float = 0.8
+    enable_feedback_sla: bool = True
+    feedback_idle_days: int = 3
     backlog_categories: List[str] = Field(default_factory=list)
     last_backlog_run_at: Optional[datetime] = None
     last_sla_run_at: Optional[datetime] = None
@@ -62,4 +66,8 @@ class AutomationConfigUpdate(BaseModel):
     sla_interval_minutes: int = Field(default=15, ge=5, le=24 * 60)
     skip_high_risk: bool = False
     auto_send_simple_reply: bool = False
+    enable_night_auto_resolve: bool = False
+    night_confidence_threshold: float = Field(default=0.8, ge=0.0, le=1.0)
+    enable_feedback_sla: bool = True
+    feedback_idle_days: int = Field(default=3, ge=1, le=30)
     backlog_categories: List[str] = Field(default_factory=list)

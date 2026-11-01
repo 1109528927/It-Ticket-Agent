@@ -5,7 +5,17 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from model.user import Base
@@ -98,6 +108,18 @@ class AutomationConfig(Base):
     auto_send_simple_reply: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
+    # 夜班：非高危且置信度达标 → 发回复并 status=auto_resolved（仍禁止改密改权）
+    enable_night_auto_resolve: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    night_confidence_threshold: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.8
+    )
+    # waiting_feedback 超时催办；员工意图结案 / 升级
+    enable_feedback_sla: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    feedback_idle_days: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
     # JSON 数组字符串，如 ["account","network"]；空表示全部类别
     backlog_categories: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     last_backlog_run_at: Mapped[Optional[datetime]] = mapped_column(
