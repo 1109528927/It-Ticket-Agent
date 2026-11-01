@@ -1,6 +1,7 @@
 # It-Ticket-Agent
 
-内部 IT 智能工单台：员工/客服双角色，LangGraph 双图 Agent，Milvus RAG，高危操作人机确认。
+内部 IT 智能工单台：员工提单、客服处理，LangGraph 双图 Agent，Milvus RAG。
+按风险分流：低危可进简易台一键回复或按配置无人值守；高危只走人工确认（HITL）。
 
 技术栈：Vue3 + FastAPI + PostgreSQL + LangGraph + Milvus
 
@@ -15,29 +16,3 @@ worker/
 │   └── .env.example
 ├── front/            # Vue3 + Vite 前端
 └── README.md
-```
-
-## 本地启动（简要）
-
-### 后端
-
-```bash
-cd backend
-cp .env.example .env   # 填写数据库与模型密钥
-# 创建 venv 并安装 requirements.txt 后：
-export PYTHONPATH=src
-uvicorn main:app --reload --port 8000
-```
-
-### 前端
-
-```bash
-cd front
-pnpm install
-pnpm run dev
-```
-
-## 说明
-
-- 请勿提交 `.env`、`pwd.txt`、虚拟环境与 `node_modules`
-- 知识库原文在 `backend/kb_source/`，Skill 短 SOP 在 `backend/src/agent/skills/`
